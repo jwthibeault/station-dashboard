@@ -42,17 +42,17 @@ class IamResponding:
         except TimeoutError:
             print("Already logged into IamResponding.")
 
-        self.page.wait_for_load_state("networkidle")
+        #
+        # Wait until the page is loaded enough to continue.
+        # Using DOMContentLoaded is more reliable than waiting
+        # for network activity to completely stop.
+        #
+        self.page.wait_for_load_state("domcontentloaded")
 
     def show(self):
         self.page.bring_to_front()
 
     def check(self):
-        """
-        Returns True if we're still on the dashboard.
-        Returns False if we've been redirected away from it.
-        """
-
         return self.page.url.startswith(
             "https://dashboard.iamresponding.com"
         )

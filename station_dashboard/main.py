@@ -29,8 +29,8 @@ def main():
     )
 
     dashboards = [
-        iam,
-        vdot
+        ("IamResponding", iam),
+        ("VDOT", vdot)
     ]
 
     #
@@ -48,20 +48,37 @@ def main():
 
     while True:
 
-        #
-        # Health monitoring
-        #
-        if not iam.check():
-            print("WARNING: IamResponding is no longer logged in.")
+        for name, dashboard in dashboards:
 
-        if not vdot.check():
-            print("WARNING: VDOT is no longer displaying the camera wall.")
-
-        #
-        # Rotate dashboards
-        #
-        for dashboard in dashboards:
+            #
+            # Bring the tab to the front first so Chromium updates it.
+            #
             dashboard.show()
+
+            #
+            # Give the page a brief moment to process any redirects or
+            # session changes that occurred while it was in the background.
+            #
+            time.sleep(0.5)
+
+            #
+            # Now verify that it's still healthy.
+            #
+            if not dashboard.check():
+
+                print(f"{name} is no longer available.")
+                print(f"Reconnecting {name}...")
+
+                dashboard.open()
+
+                #
+                # Make sure the recovered dashboard is visible.
+                #
+                dashboard.show()
+
+            #
+            # Display the dashboard for the configured rotation time.
+            #
             time.sleep(config.rotation_seconds)
 
 
