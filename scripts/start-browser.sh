@@ -3,7 +3,7 @@
 sleep 5
 
 /usr/bin/chromium \
-  --start-fullscreen \
+  --kiosk \
   --no-first-run \
   --disable-session-crashed-bubble \
   --disable-restore-session-state \
