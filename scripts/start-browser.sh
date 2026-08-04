@@ -1,5 +1,7 @@
 #!/bin/bash
+
 sleep 5
+
 /usr/bin/chromium \
   --start-fullscreen \
   --no-first-run \
@@ -10,4 +12,7 @@ sleep 5
   --disable-features=TranslateUI \
   --password-store=basic \
   --remote-debugging-port=9222 \
+  --noerrdialogs \
+  --disable-pinch \
+  --overscroll-history-navigation=0 \
   about:blank

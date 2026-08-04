@@ -16,15 +16,15 @@ def main():
     print("Connected successfully.")
 
     #
-    # Create dashboard modules
+    # Reuse the first two browser tabs instead of always creating new ones.
     #
     iam = IamResponding(
-        browser.new_page(),
+        browser.page(0),
         config.credentials["iamresponding"]
     )
 
     vdot = VDOT(
-        browser.new_page(),
+        browser.page(1),
         config.credentials["vdot"]
     )
 
