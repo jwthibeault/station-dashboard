@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=jcbvfd
+Description=Raspberry Pi Desktop Splash
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/jcbvfd
+ScriptFile=/usr/share/plymouth/themes/jcbvfd/jcbvfd.script
