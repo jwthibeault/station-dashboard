@@ -46,3 +46,13 @@ class IamResponding:
 
     def show(self):
         self.page.bring_to_front()
+
+    def check(self):
+        """
+        Returns True if we're still on the dashboard.
+        Returns False if we've been redirected away from it.
+        """
+
+        return self.page.url.startswith(
+            "https://dashboard.iamresponding.com"
+        )

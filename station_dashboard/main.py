@@ -47,6 +47,19 @@ def main():
     print(f"Rotating every {config.rotation_seconds} seconds.")
 
     while True:
+
+        #
+        # Health monitoring
+        #
+        if not iam.check():
+            print("WARNING: IamResponding is no longer logged in.")
+
+        if not vdot.check():
+            print("WARNING: VDOT is no longer displaying the camera wall.")
+
+        #
+        # Rotate dashboards
+        #
         for dashboard in dashboards:
             dashboard.show()
             time.sleep(config.rotation_seconds)
