@@ -1,0 +1,17 @@
+{
+  "dashboard": {
+    "rotation_seconds": 30,
+    "headless": false
+  },
+
+  "pages": [
+    {
+      "name": "IamResponding",
+      "url": "https://dashboard.iamresponding.com"
+    },
+    {
+      "name": "VDOT Cameras",
+      "url": "https://secure.vdotcameras.com"
+    }
+  ]
+}
