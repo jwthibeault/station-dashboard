@@ -1,0 +1,8 @@
+/usr/bin/kanshi &
+/usr/bin/lxsession-xdg-autostart
+~/station-dashboard/scripts/start-browser.sh &
+
+(
+    sleep 8
+    wtype -M alt -M logo h -m logo -m alt
+) &

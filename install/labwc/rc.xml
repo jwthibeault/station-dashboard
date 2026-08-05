@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+
+  <keyboard>
+
+    <default />
+
+    <keybind key="A-W-h">
+      <action name="HideCursor"/>
+      <action name="WarpCursor" x="-1" y="-1"/>
+    </keybind>
+
+  </keyboard>
+
+</openbox_config>
