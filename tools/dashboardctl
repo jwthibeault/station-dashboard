@@ -1,0 +1,136 @@
+#!/bin/bash
+
+PROJECT_DIR="$HOME/station-dashboard"
+SERVICE="station-dashboard.service"
+VERSION="v1.1.0"
+
+show_help() {
+cat << EOF
+
+=========================================
+ James City Bruton VFD Dashboard
+ Maintenance Utility
+=========================================
+
+Usage:
+
+    ./tools/dashboardctl <command>
+
+Commands:
+
+    status
+        Display dashboard status
+
+    maintenance
+        Stop the dashboard and Chromium
+
+    production
+        Start Chromium and the dashboard
+
+    restart
+        Restart the dashboard
+
+    version
+        Display dashboard version
+
+    help
+        Display this help screen
+
+EOF
+}
+
+status() {
+
+    HOSTNAME=$(hostname)
+
+    if systemctl is-active --quiet "$SERVICE"; then
+        DASHBOARD_STATUS="Running"
+    else
+        DASHBOARD_STATUS="Stopped"
+    fi
+
+    # Chromium check
+    if pgrep -af chromium >/dev/null; then
+        CHROMIUM_STATUS="Running"
+    else
+        CHROMIUM_STATUS="Stopped"
+    fi
+
+cat << EOF
+
+=========================================
+ James City Bruton VFD Dashboard
+ Maintenance Utility
+=========================================
+
+Host:               $HOSTNAME
+Dashboard Service:  $DASHBOARD_STATUS
+Chromium:           $CHROMIUM_STATUS
+Version:            $VERSION
+
+EOF
+}
+
+maintenance() {
+
+    echo "Stopping dashboard..."
+    sudo systemctl stop "$SERVICE"
+
+    echo "Stopping Chromium..."
+    pkill chromium >/dev/null 2>&1
+
+    echo
+    echo "Maintenance mode enabled."
+}
+
+production() {
+
+    echo "Starting dashboard..."
+    sudo systemctl start "$SERVICE"
+
+    echo
+    echo "Production mode enabled."
+}
+
+restart_dashboard() {
+
+    echo "Restarting dashboard..."
+    sudo systemctl restart "$SERVICE"
+
+    echo
+    echo "Dashboard restarted."
+}
+
+version() {
+
+    echo
+    echo "Dashboard Version: $VERSION"
+    echo
+}
+
+case "$1" in
+    status)
+        status
+        ;;
+    maintenance)
+        maintenance
+        ;;
+    production)
+        production
+        ;;
+    restart)
+        restart_dashboard
+        ;;
+    version)
+        version
+        ;;
+    help|"")
+        show_help
+        ;;
+    *)
+        echo "Unknown command: $1"
+        echo
+        show_help
+        exit 1
+        ;;
+esac
