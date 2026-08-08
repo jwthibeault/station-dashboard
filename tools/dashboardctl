@@ -2,7 +2,7 @@
 
 PROJECT_DIR="$HOME/station-dashboard"
 SERVICE="station-dashboard.service"
-VERSION="v1.1.0"
+VERSION="v1.3.0"
 
 show_help() {
 cat << EOF
@@ -85,12 +85,26 @@ maintenance() {
 
 production() {
 
+    echo "Starting Chromium..."
+
+    env DISPLAY=:0 \
+        WAYLAND_DISPLAY=wayland-0 \
+        XDG_RUNTIME_DIR=/run/user/1000 \
+        DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
+        XDG_SESSION_TYPE=wayland \
+        systemd-run --user --scope \
+        "$PROJECT_DIR/scripts/start-browser.sh" >/tmp/station-dashboard-chromium.log 2>&1 &
+
+    echo "Waiting for Chromium..."
+    sleep 5
+
     echo "Starting dashboard..."
     sudo systemctl start "$SERVICE"
 
     echo
     echo "Production mode enabled."
 }
+
 
 restart_dashboard() {
 

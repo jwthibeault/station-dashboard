@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Start Chromium if it isn't already running.
-~/station-dashboard/scripts/start-browser.sh
+# ~/station-dashboard/scripts/start-browser.sh
 
 # Give Chromium time to start listening on the CDP port.
 sleep 5
