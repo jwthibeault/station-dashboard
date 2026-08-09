@@ -46,6 +46,43 @@ def main():
     print("Dashboard is running.")
     print(f"Rotating every {config.rotation_seconds} seconds.")
 
+    #
+    # Wait for the rotation period while monitoring IamResponding
+    # for emergency mode.
+    #
+    def wait_for_rotation(seconds):
+        end_time = time.time() + seconds
+
+        while time.time() < end_time:
+
+            #
+            # Check IamResponding for emergency mode.
+            #
+            if iam.is_emergency():
+
+                print("IamResponding emergency detected.")
+
+                #
+                # Bring IamResponding to the front and activate
+                # the Hybrid emergency map.
+                #
+                iam.show()
+                iam.activate_emergency()
+
+                print("Pausing dashboard rotation.")
+
+                #
+                # Stay on IamResponding until the emergency timer
+                # disappears.
+                #
+                while iam.is_emergency():
+                    time.sleep(1)
+
+                print("IamResponding emergency ended.")
+                print("Resuming dashboard rotation.")
+
+            time.sleep(1)
+
     while True:
 
         for name, dashboard in dashboards:
@@ -77,9 +114,10 @@ def main():
                 dashboard.show()
 
             #
-            # Display the dashboard for the configured rotation time.
+            # Display the dashboard for the configured rotation time
+            # while continuing to monitor for an IaR emergency.
             #
-            time.sleep(config.rotation_seconds)
+            wait_for_rotation(config.rotation_seconds)
 
 
 if __name__ == "__main__":

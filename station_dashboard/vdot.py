@@ -105,9 +105,15 @@ class VDOT:
     def check(self):
         """
         Returns True if VDOT is still displaying the operator wall.
-        Returns False if we've been redirected elsewhere.
+        Returns False if we've been redirected elsewhere or
+        the logout popup is visible.
         """
 
-        return self.page.url.startswith(
+        if not self.page.url.startswith(
             "https://secure.vdotcameras.com/operator/wall"
-        )
+        ):
+            return False
+
+        return not self.page.locator(
+            "#logged-out-message"
+        ).is_visible()

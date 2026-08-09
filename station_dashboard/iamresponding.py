@@ -56,3 +56,32 @@ class IamResponding:
         return self.page.url.startswith(
             "https://dashboard.iamresponding.com"
         )
+
+    def is_emergency(self):
+        return self.page.locator(
+            'span[class*="_timer_"]'
+        ).is_visible()
+
+    def activate_emergency(self):
+        print("IamResponding emergency detected.")
+        print("Loading Hybrid map...")
+
+        self.page.get_by_role(
+            "button",
+            name="GO!"
+        ).nth(1).click()
+
+        print("Zooming Hybrid map out one level...")
+
+        try:
+            self.page.get_by_role(
+                "button",
+                name="Zoom out"
+            ).nth(1).click()
+
+            print("Hybrid emergency map ready.")
+
+        except TimeoutError:
+            print("Hybrid map Zoom Out button was not available.")
+
+        return True
