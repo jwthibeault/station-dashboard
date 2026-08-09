@@ -14,4 +14,4 @@ source venv/bin/activate
 
 # Start the dashboard.
 cd station_dashboard
-python main.py
+python -u main.py
