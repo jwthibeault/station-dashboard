@@ -5,9 +5,15 @@ James City Bruton Volunteer Fire Department Station Dashboard.
 
 These files are installed in the user's home directory under:
 
-```
 ~/.config/labwc/
-```
+
+The dashboard also uses a Kanshi configuration stored in:
+
+install/kanshi/config
+
+which is installed under:
+
+~/.config/kanshi/
 
 ---
 
@@ -23,9 +29,7 @@ It is responsible for:
 - Running `lxsession-xdg-autostart`
 - Launching Chromium using:
 
-```
-~/station-dashboard/scripts/start-browser.sh
-```
+`~/station-dashboard/scripts/start-browser.sh`
 
 - Automatically hiding the mouse cursor after startup using `wtype`
 
@@ -37,9 +41,7 @@ Extends the default `labwc` keyboard configuration.
 
 It adds one custom keybinding:
 
-```
-Alt + Super + H
-```
+`Alt + Super + H`
 
 This keybinding executes:
 
@@ -50,11 +52,28 @@ to hide the mouse pointer and move it off-screen.
 
 The default `labwc` keyboard shortcuts are preserved using:
 
-```xml
-<default />
-```
+`<default />`
 
 No other keyboard shortcuts are modified.
+
+---
+
+### Kanshi configuration
+
+The Kanshi configuration is stored in:
+
+`install/kanshi/config`
+
+It configures the station display to use:
+
+`1920x1080 @ 60 Hz`
+
+The configuration is installed in:
+
+`~/.config/kanshi/config`
+
+This provides a readable 1080p display on the station television while
+maintaining a 60 Hz refresh rate.
 
 ---
 
@@ -80,28 +99,30 @@ This approach:
 - Does not require `unclutter`
 - Has proven reliable during testing
 
+The dashboard uses Kanshi to automatically configure the station television
+to the desired display resolution when the graphical session starts.
+
 ---
 
 ## Installing
 
-Copy the files into:
+Copy the labwc configuration files into:
 
-```
-~/.config/labwc/
-```
+`~/.config/labwc/`
 
-Example:
+For example:
 
-```bash
-cp autostart ~/.config/labwc/
-cp rc.xml ~/.config/labwc/
-```
+`cp autostart ~/.config/labwc/`
+`cp rc.xml ~/.config/labwc/`
+
+Install the Kanshi configuration:
+
+`mkdir -p ~/.config/kanshi`
+`cp ../kanshi/config ~/.config/kanshi/`
 
 Reload labwc:
 
-```bash
-labwc --reconfigure
-```
+`labwc --reconfigure`
 
 or simply reboot.
 
@@ -111,22 +132,34 @@ or simply reboot.
 
 The automatic cursor hiding requires:
 
-```
-wtype
-```
+`wtype`
 
 Install with:
 
-```bash
-sudo apt install wtype
-```
+`sudo apt install wtype`
+
+The display configuration requires:
+
+`kanshi`
+
+---
+
+## Display Configuration
+
+The current station display configuration is:
+
+`HDMI-A-1`
+`1920x1080`
+`60 Hz`
+
+The configuration is intentionally maintained in the repository so that the
+station display setup can be reproduced if the Raspberry Pi is replaced or
+the dashboard is installed on another system.
 
 ---
 
 ## Version
 
-Added in:
+Display configuration added in:
 
-**Version 1.1.0**
-
-Native Wayland cursor hiding.
+**Version 1.3.3**
