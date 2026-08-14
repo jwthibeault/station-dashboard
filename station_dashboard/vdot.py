@@ -63,14 +63,85 @@ class VDOT:
             'iframe[title="Operator Application"]'
         )
 
-        self.page.wait_for_timeout(1000)
+        print("Waiting for VDOT wall to initialize...")
 
-        print("Opening Device Groups...")
+        wall = frame.locator("div.wall.page")
 
-        frame.get_by_role(
+        wall.wait_for(
+            state="visible",
+            timeout=15000
+        )
+
+        #
+        # The Wall container becomes visible before the VDOT
+        # application has finished initializing. Wait for the
+        # actual loading overlay and loading messages to disappear
+        # before attempting to interact with the wall.
+        #
+        print("Waiting for VDOT loading overlay...")
+
+        loading_modal = frame.locator(
+            "vp-modal-loading"
+        )
+
+        loading_modal.wait_for(
+            state="hidden",
+            timeout=15000
+        )
+
+        print("VDOT loading overlay cleared.")
+
+        print("Waiting for VDOT loading messages...")
+
+        loading_messages = frame.locator(
+            ".loading-message"
+        )
+
+        loading_messages.first.wait_for(
+            state="hidden",
+            timeout=15000
+        )
+
+        print("VDOT loading messages cleared.")
+
+        print("Waiting for Device Groups panel...")
+
+        wall_open = frame.locator(
+            "div.wall.page.device-groups-open"
+        )
+
+        wall_open.wait_for(
+            state="visible",
+            timeout=15000
+        )
+
+        print("Device Groups panel is open.")
+
+        device_groups = frame.get_by_role(
             "button",
-            name="Device Groups"
-        ).click()
+            name="Device Groups",
+            exact=True
+        )
+
+        device_groups.wait_for(
+            state="visible",
+            timeout=5000
+        )
+
+        print("Closing Device Groups...")
+
+        device_groups.click()
+
+        print("Waiting for Device Groups panel to close...")
+
+        frame.locator(
+            "div.wall.page:not(.device-groups-open)"
+        ).wait_for(
+            state="visible",
+            timeout=10000
+        )
+
+        print("Device Groups panel closed.")
 
         print("Opening Views...")
 

@@ -16,6 +16,8 @@ class Config:
     def pages(self):
         return self.config["pages"]
 
-    @property
-    def rotation_seconds(self):
-        return self.config["dashboard"]["rotation_seconds"]
+    def rotation_seconds(self, page_name):
+        for page in self.pages:
+            if page["name"] == page_name:
+                return page["rotation_seconds"]
+        return 0
