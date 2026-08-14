@@ -4,6 +4,7 @@ from browser import Browser
 from config import Config
 from iamresponding import IamResponding
 from vdot import VDOT
+from bloomwx import BloomWX
 
 
 def main():
@@ -16,7 +17,7 @@ def main():
     print("Connected successfully.")
 
     #
-    # Reuse the first two browser tabs instead of always creating new ones.
+    # Reuse the first three browser tabs.
     #
     iam = IamResponding(
         browser.page(0),
@@ -28,9 +29,14 @@ def main():
         config.credentials["vdot"]
     )
 
+    bloomwx = BloomWX(
+        browser.page(2)
+    )
+
     dashboards = [
         ("IamResponding", iam, config.rotation_seconds("IamResponding")),
-        ("VDOT", vdot, config.rotation_seconds("VDOT Cameras"))
+        ("VDOT", vdot, config.rotation_seconds("VDOT Cameras")),
+        ("BloomWX", bloomwx, config.rotation_seconds("BloomWX"))
     ]
 
     #
@@ -70,6 +76,11 @@ def main():
         print(f"VDOT startup failed: {e}")
         print("Continuing without VDOT for now.")
         print("VDOT will be retried during its next rotation.")
+
+    #
+    # Open BloomWX.
+    #
+    bloomwx.open()
 
     print()
     print("Dashboard is running.")
@@ -194,7 +205,7 @@ def main():
 
             #
             # Display the dashboard for its configured rotation time
-            # while continuing to monitor for an IaR emergency.
+            # while continuing to monitor for an IamResponding emergency.
             #
             wait_for_rotation(seconds)
 

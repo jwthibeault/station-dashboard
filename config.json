@@ -13,6 +13,11 @@
       "name": "VDOT Cameras",
       "url": "https://secure.vdotcameras.com",
       "rotation_seconds": 10
+    },
+    {
+      "name": "BloomWX",
+      "url": "https://bloomwx.com/livedash/at/toano-va?zoom=8",
+      "rotation_seconds": 10
     }
   ]
 }
