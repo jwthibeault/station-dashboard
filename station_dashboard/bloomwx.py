@@ -18,6 +18,23 @@ class BloomWX:
         except Exception:
             return False
 
+    def _has_broken_map_image(self):
+        if self.page.is_closed():
+            return False
+
+        try:
+            return self.page.locator(
+                'img[src*="server.arcgisonline.com"]'
+            ).evaluate_all(
+                """
+                images => images.some(
+                    img => img.complete && img.naturalWidth === 0
+                )
+                """
+            )
+        except Exception:
+            return False
+
     def _wait_for_loaded(self):
         self.page.wait_for_function(
             """
@@ -70,4 +87,26 @@ class BloomWX:
         self.page.bring_to_front()
 
     def check(self):
-        return self._is_loaded()
+        if not self._is_loaded():
+            return False
+
+        if self._has_broken_map_image():
+            print("BloomWX map image failed to load.")
+            print("Refreshing BloomWX...")
+
+            try:
+                self.page.reload(
+                    wait_until="domcontentloaded",
+                    timeout=30000
+                )
+
+                self._wait_for_loaded()
+                print("BloomWX loaded successfully after map refresh.")
+                return True
+
+            except Exception as e:
+                print(f"BloomWX map refresh failed: {e}")
+                print("BloomWX will be retried during its next rotation.")
+                return False
+
+        return True
