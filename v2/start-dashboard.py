@@ -1,7 +1,9 @@
 import json
 import subprocess
 import sys
+import threading
 import time
+import urllib.request
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -14,53 +16,109 @@ from station_dashboard.iamresponding import IamResponding
 from station_dashboard.vdot import VDOT
 
 
-BLOOMWX_URL = "http://127.0.0.1:8082/bloomwx.html"
-BLOOMWX_PROFILE = "/tmp/v2-bloomwx-profile"
-BLOOMWX_PORT = 9230
+DASHBOARDS = {
+    "BloomWX": {
+        "url": "http://127.0.0.1:8082/bloomwx.html",
+        "profile": "/tmp/v2-bloomwx-profile",
+        "port": 9230,
+        "log": "/tmp/v2-bloomwx-launch.log",
+    },
+    "VDOT": {
+        "url": "http://127.0.0.1:8082/vdot.html",
+        "profile": "/tmp/v2-vdot-profile",
+        "port": 9231,
+        "log": "/tmp/v2-vdot-launch.log",
+    },
+    "IamResponding": {
+        "url": "http://127.0.0.1:8082/iamresponding.html",
+        "profile": "/tmp/v2-iamresponding-profile",
+        "port": 9232,
+        "log": "/tmp/v2-iamresponding-launch.log",
+    },
+    "PulsePoint": {
+        "url": "http://127.0.0.1:8082/pulsepoint.html",
+        "profile": "/tmp/v2-pulsepoint-profile",
+        "port": 9233,
+        "log": "/tmp/v2-pulsepoint-launch.log",
+    },
+}
 
-VDOT_URL = "http://127.0.0.1:8082/vdot.html"
-VDOT_PROFILE = "/tmp/v2-vdot-profile"
-VDOT_PORT = 9231
 
-IAMRESPONDING_URL = "http://127.0.0.1:8082/iamresponding.html"
-IAMRESPONDING_PROFILE = "/tmp/v2-iamresponding-profile"
-IAMRESPONDING_PORT = 9232
-
-PULSEPOINT_URL = "http://127.0.0.1:8082/pulsepoint.html"
-PULSEPOINT_PROFILE = "/tmp/v2-pulsepoint-profile"
-PULSEPOINT_PORT = 9233
+WRAPPER_DIR = BASE_DIR / "v2" / "windows"
+WRAPPER_PORT = 8082
+WRAPPER_LOG = "/tmp/v2-wrapper-server.log"
 
 
-def wait_for_cdp(port, timeout=30):
+def wait_for_wrapper_server(timeout=10):
     deadline = time.time() + timeout
+    url = f"http://127.0.0.1:{WRAPPER_PORT}/bloomwx.html"
 
     while time.time() < deadline:
         try:
-            with sync_playwright() as p:
-                browser = p.chromium.connect_over_cdp(
-                    f"http://127.0.0.1:{port}"
-                )
-                browser.close()
-
-            return True
+            with urllib.request.urlopen(
+                url,
+                timeout=1,
+            ) as response:
+                if response.status == 200:
+                    return True
 
         except Exception:
-            time.sleep(0.5)
+            pass
+
+        time.sleep(0.5)
 
     return False
 
 
-def start_window(url, profile, port, log_file):
+def start_wrapper_server():
     command = [
-        str(BASE_DIR / "scripts/start-v2-window.sh"),
-        url,
-        profile,
-        str(port),
+        sys.executable,
+        "-m",
+        "http.server",
+        str(WRAPPER_PORT),
+        "--directory",
+        str(WRAPPER_DIR),
     ]
 
     return subprocess.Popen(
         command,
-        stdout=open(log_file, "a"),
+        stdout=open(WRAPPER_LOG, "a"),
+        stderr=subprocess.STDOUT,
+    )
+
+
+def wait_for_cdp(port, timeout=30):
+    deadline = time.time() + timeout
+    url = f"http://127.0.0.1:{port}/json/version"
+
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(
+                url,
+                timeout=1,
+            ) as response:
+                if response.status == 200:
+                    return True
+
+        except Exception:
+            pass
+
+        time.sleep(0.5)
+
+    return False
+
+
+def start_window(config):
+    command = [
+        str(BASE_DIR / "scripts/start-v2-window.sh"),
+        config["url"],
+        config["profile"],
+        str(config["port"]),
+    ]
+
+    return subprocess.Popen(
+        command,
+        stdout=open(config["log"], "a"),
         stderr=subprocess.STDOUT,
     )
 
@@ -85,195 +143,288 @@ def get_page(browser, name):
     return page
 
 
+def wait_for_real_page(page, name, timeout=30):
+    print(f"Waiting for {name} wrapper redirect...")
+
+    deadline = time.time() + timeout
+
+    while time.time() < deadline:
+        if page.is_closed():
+            raise RuntimeError(
+                f"{name} page closed during wrapper redirect."
+            )
+
+        url = page.url
+
+        if not url.startswith(
+            "http://127.0.0.1:8082/"
+        ):
+            print(f"{name} real page reached: {url}")
+            return
+
+        time.sleep(0.5)
+
+    raise RuntimeError(
+        f"{name} wrapper did not redirect within "
+        f"{timeout} seconds."
+    )
+
+
+def initialize_bloomwx(browser):
+    page = get_page(browser, "BloomWX")
+
+    print(
+        "Skipping wrapper readiness wait for BloomWX; "
+        "using V1.5.1 load and health flow."
+    )
+
+    bloomwx = BloomWX(page)
+
+    print("Opening BloomWX...")
+    if not bloomwx.open():
+        raise RuntimeError(
+            "BloomWX failed to load."
+        )
+
+    print("Checking BloomWX...")
+    healthy = bloomwx.check()
+
+    print(f"BloomWX health check result: {healthy}")
+
+    if not healthy:
+        raise RuntimeError("BloomWX health check failed.")
+
+    print("BloomWX health check passed.")
+
+
+def initialize_vdot(browser, credentials):
+    page = get_page(browser, "VDOT")
+
+    print(
+        "Skipping wrapper readiness wait for VDOT; "
+        "using known-good navigation and login flow."
+    )
+
+    vdot = VDOT(
+        page,
+        credentials["vdot"]
+    )
+
+    print("Opening VDOT camera wall...")
+    vdot.open()
+
+    print("VDOT camera wall initialized successfully.")
+
+
+def initialize_iamresponding(browser, credentials):
+    page = get_page(browser, "IamResponding")
+
+    print(
+        "Skipping wrapper readiness wait for IamResponding; "
+        "using known-good login flow."
+    )
+
+    iam = IamResponding(
+        page,
+        credentials["iamresponding"]
+    )
+
+    print("Opening IamResponding...")
+    iam.open()
+
+    print("Checking IamResponding...")
+    healthy = iam.check()
+
+    print(
+        f"IamResponding health check result: "
+        f"{healthy}"
+    )
+
+    if not healthy:
+        raise RuntimeError(
+            "IamResponding health check failed."
+        )
+
+    print("IamResponding health check passed.")
+
+
+def initialize_pulsepoint(browser):
+    page = get_page(browser, "PulsePoint")
+
+    print(f"PulsePoint page: {page.url}")
+    print("PulsePoint placeholder is running.")
+
+
+def initialize_dashboard(
+    name,
+    config,
+    credentials,
+    results,
+):
+    print()
+    print(f"--- {name} ---")
+
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.connect_over_cdp(
+                f"http://127.0.0.1:{config['port']}"
+            )
+
+            if name == "BloomWX":
+                initialize_bloomwx(browser)
+
+            elif name == "VDOT":
+                initialize_vdot(
+                    browser,
+                    credentials
+                )
+
+            elif name == "IamResponding":
+                initialize_iamresponding(
+                    browser,
+                    credentials
+                )
+
+            elif name == "PulsePoint":
+                initialize_pulsepoint(browser)
+
+            results[name] = True
+            print(f"{name} initialization PASSED.")
+
+    except Exception as e:
+        results[name] = False
+
+        print(f"{name} initialization FAILED: {e}")
+        print(
+            f"{name} will remain isolated from "
+            "the other dashboards."
+        )
+
+
 def main():
-    print("===== V2 FOUR-QUADRANT DASHBOARD =====")
+    print("===== V2.1 INDEPENDENT INITIALIZATION TEST =====")
 
-    print("Starting BloomWX Chromium...")
-    bloom_process = start_window(
-        BLOOMWX_URL,
-        BLOOMWX_PROFILE,
-        BLOOMWX_PORT,
-        "/tmp/v2-bloomwx-launch.log",
-    )
+    processes = {}
+    initialization_results = {}
 
-    print("Waiting for BloomWX CDP...")
-    if not wait_for_cdp(BLOOMWX_PORT):
-        raise RuntimeError("BloomWX Chromium did not start.")
+    #
+    # Start the local wrapper server first.
+    #
+    print()
+    print("===== STARTING WRAPPER SERVER =====")
 
-    print("BloomWX Chromium is ready.")
+    wrapper_process = start_wrapper_server()
 
-    print("Starting VDOT Chromium...")
-    vdot_process = start_window(
-        VDOT_URL,
-        VDOT_PROFILE,
-        VDOT_PORT,
-        "/tmp/v2-vdot-launch.log",
-    )
+    print("Waiting for wrapper server...")
 
-    print("Waiting for VDOT CDP...")
-    if not wait_for_cdp(VDOT_PORT):
-        raise RuntimeError("VDOT Chromium did not start.")
+    if not wait_for_wrapper_server():
+        wrapper_process.terminate()
+        raise RuntimeError(
+            "V2 wrapper server did not start."
+        )
 
-    print("VDOT Chromium is ready.")
+    print("V2 wrapper server is ready.")
 
-    print("Starting IamResponding Chromium...")
-    iam_process = start_window(
-        IAMRESPONDING_URL,
-        IAMRESPONDING_PROFILE,
-        IAMRESPONDING_PORT,
-        "/tmp/v2-iamresponding-launch.log",
-    )
+    #
+    # Start all four Chromium windows.
+    #
+    print()
+    print("===== STARTING CHROMIUM WINDOWS =====")
 
-    print("Waiting for IamResponding CDP...")
-    if not wait_for_cdp(IAMRESPONDING_PORT):
-        raise RuntimeError("IamResponding Chromium did not start.")
+    for name, config in DASHBOARDS.items():
+        print(f"Starting {name} Chromium...")
 
-    print("IamResponding Chromium is ready.")
+        processes[name] = start_window(config)
 
-    print("Starting PulsePoint Chromium...")
-    pulse_process = start_window(
-        PULSEPOINT_URL,
-        PULSEPOINT_PROFILE,
-        PULSEPOINT_PORT,
-        "/tmp/v2-pulsepoint-launch.log",
-    )
+        # Give Labwc time to apply the window placement rule
+        # before creating the next Chromium window.
+        if name != list(DASHBOARDS.keys())[-1]:
+            time.sleep(2)
 
-    print("Waiting for PulsePoint CDP...")
-    if not wait_for_cdp(PULSEPOINT_PORT):
-        raise RuntimeError("PulsePoint Chromium did not start.")
+    #
+    # Wait for every CDP endpoint independently.
+    #
+    print()
+    print("===== WAITING FOR CDP =====")
 
-    print("PulsePoint Chromium is ready.")
+    for name, config in DASHBOARDS.items():
+        print(f"Waiting for {name} CDP...")
+
+        if wait_for_cdp(config["port"]):
+            print(f"{name} Chromium is ready.")
+        else:
+            print(f"{name} Chromium FAILED to start.")
 
     print()
-    print("All four V2 Chromium windows are running.")
-    print()
+    print("All Chromium startup attempts completed.")
 
     with open(BASE_DIR / "credentials.json") as f:
         credentials = json.load(f)
 
-    with sync_playwright() as p:
+    #
+    # Initialize every dashboard concurrently.
+    # Each thread owns its own Playwright connection.
+    #
+    print()
+    print("===== INITIALIZING DASHBOARDS CONCURRENTLY =====")
 
-        #
-        # VDOT
-        #
-        print("===== VDOT =====")
+    threads = []
 
-        vdot_browser = p.chromium.connect_over_cdp(
-            f"http://127.0.0.1:{VDOT_PORT}"
+    for name, config in DASHBOARDS.items():
+        thread = threading.Thread(
+            target=initialize_dashboard,
+            args=(
+                name,
+                config,
+                credentials,
+                initialization_results,
+            ),
+            name=f"v2-{name}",
         )
 
-        vdot_page = get_page(
-            vdot_browser,
-            "VDOT"
+        threads.append(thread)
+        thread.start()
+
+    for thread in threads:
+        thread.join()
+
+    #
+    # Summary
+    #
+    print()
+    print("========================================")
+    print("V2.1 INITIALIZATION RESULTS")
+    print("========================================")
+
+    for name in DASHBOARDS:
+        result = initialization_results.get(
+            name,
+            False
         )
 
-        vdot = VDOT(
-            vdot_page,
-            credentials["vdot"]
-        )
+        status = "PASS" if result else "FAILED"
 
-        print("Opening VDOT camera wall...")
-        vdot.open()
-        print("VDOT camera wall initialized successfully.")
+        print(f"{name:16} {status}")
 
-        #
-        # IamResponding
-        #
-        print()
-        print("===== IAMRESPONDING =====")
+    print()
+    print("This test does not yet perform continuous")
+    print("health monitoring or automatic recovery.")
+    print()
+    print("Press Enter to stop the V2.1 test...")
 
-        iam_browser = p.chromium.connect_over_cdp(
-            f"http://127.0.0.1:{IAMRESPONDING_PORT}"
-        )
+    input()
 
-        iam_page = get_page(
-            iam_browser,
-            "IamResponding"
-        )
-
-        iam = IamResponding(
-            iam_page,
-            credentials["iamresponding"]
-        )
-
-        print("Opening IamResponding...")
-        iam.open()
-
-        print("Checking IamResponding...")
-        iam_healthy = iam.check()
-
-        print(
-            f"IamResponding health check result: "
-            f"{iam_healthy}"
-        )
-
-        if not iam_healthy:
-            raise RuntimeError(
-                "IamResponding health check failed."
-            )
-
-        print("IamResponding health check passed.")
-
-        #
-        # BloomWX
-        #
-        print()
-        print("===== BLOOMWX =====")
-
-        bloom_browser = p.chromium.connect_over_cdp(
-            f"http://127.0.0.1:{BLOOMWX_PORT}"
-        )
-
-        bloom_page = get_page(
-            bloom_browser,
-            "BloomWX"
-        )
-
-        bloomwx = BloomWX(bloom_page)
-
-        print("Checking BloomWX...")
-        bloom_healthy = bloomwx.check()
-
-        print(
-            f"BloomWX health check result: "
-            f"{bloom_healthy}"
-        )
-
-        if not bloom_healthy:
-            raise RuntimeError(
-                "BloomWX health check failed."
-            )
-
-        print("BloomWX health check passed.")
-
-        #
-        # PulsePoint
-        #
-        print()
-        print("===== PULSEPOINT =====")
-        print("PulsePoint placeholder is running.")
-
-        print()
-        print("========================================")
-        print("V2 FOUR-QUADRANT DASHBOARD READY")
-        print("========================================")
-        print("BloomWX:        TOP LEFT")
-        print("VDOT:           TOP RIGHT")
-        print("IamResponding:  BOTTOM LEFT")
-        print("PulsePoint:     BOTTOM RIGHT")
-        print()
-        print("No dashboard rotation.")
-        print("No emergency-mode rotation handling.")
-        print()
-
-        input("Press Enter to stop the V2 test...")
-
+    #
+    # Stop all Chromium windows.
+    #
+    print()
     print("Stopping V2 Chromium windows...")
 
-    bloom_process.terminate()
-    vdot_process.terminate()
-    iam_process.terminate()
-    pulse_process.terminate()
+    for process in processes.values():
+        process.terminate()
+
+    print("Stopping V2 wrapper server...")
+    wrapper_process.terminate()
 
 
 if __name__ == "__main__":
