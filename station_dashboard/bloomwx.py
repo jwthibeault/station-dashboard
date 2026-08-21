@@ -18,6 +18,37 @@ class BloomWX:
         except Exception:
             return False
 
+    def _has_offline_banner(self):
+        if self.page.is_closed():
+            return False
+
+        try:
+            text = self.page.locator(
+                "body"
+            ).inner_text(timeout=5000).lower()
+
+            return (
+                "offline" in text
+                and "check internet connection" in text
+            )
+
+        except Exception:
+            return False
+
+    def _has_stale_data_banner(self):
+        if self.page.is_closed():
+            return False
+
+        try:
+            text = self.page.locator(
+                "body"
+            ).inner_text(timeout=5000)
+
+            return "Data not refreshing" in text
+
+        except Exception:
+            return False
+
     def _has_broken_map_image(self):
         if self.page.is_closed():
             return False
@@ -88,6 +119,14 @@ class BloomWX:
 
     def check(self):
         if not self._is_loaded():
+            return False
+
+        if self._has_offline_banner():
+            print("BloomWX offline banner detected.")
+            return False
+
+        if self._has_stale_data_banner():
+            print("BloomWX stale data banner detected.")
             return False
 
         if self._has_broken_map_image():

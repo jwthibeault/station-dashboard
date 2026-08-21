@@ -48,14 +48,32 @@ class IamResponding:
         # for network activity to completely stop.
         #
         self.page.wait_for_load_state("domcontentloaded")
+        return True
 
     def show(self):
         self.page.bring_to_front()
 
     def check(self):
-        return self.page.url.startswith(
+        if not self.page.url.startswith(
             "https://dashboard.iamresponding.com"
-        )
+        ):
+            return False
+
+        try:
+            text = self.page.locator(
+                "body"
+            ).inner_text(timeout=5000).lower()
+
+            if "trying to re-establish internet connection" in text:
+                print(
+                    "IamResponding server connection error banner detected."
+                )
+                return False
+
+        except Exception:
+            return False
+
+        return True
 
     def is_emergency(self):
         return self.page.locator(

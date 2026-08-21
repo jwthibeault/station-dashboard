@@ -1,0 +1,104 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>DASHBOARD-DOWN</title>
+
+  <style>
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      background: #000;
+      color: #fff;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+
+    .message {
+      font-size: 64px;
+      font-weight: bold;
+      line-height: 1.25;
+    }
+
+    .detail {
+      margin-top: 40px;
+      font-size: 32px;
+      font-weight: normal;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="message">
+    <div id="headline">WEBSITE DOWN</div>
+    <div class="detail" id="detail">
+      The dashboard website is unavailable or not providing valid current data.
+    </div>
+
+    <div class="detail" id="network-status">
+      Network status: UNKNOWN
+    </div>
+
+    <div class="detail" id="network-details">
+    </div>
+
+    <div class="detail" id="last-check">
+      Last successful health check: NONE
+    </div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const site = params.get("site") || "DASHBOARD";
+    const lastSuccessful =
+      params.get("last_successful") ||
+      "No successful health check recorded.";
+    const reason =
+      params.get("reason") || "WEBSITE OUTAGE";
+
+    const networkOutage =
+      reason.toUpperCase() === "NETWORK OUTAGE";
+
+    const headline = networkOutage
+      ? `${site.toUpperCase()} NETWORK OUTAGE`
+      : `${site.toUpperCase()} WEBSITE DOWN`;
+
+    const detail = networkOutage
+      ? "The station network connection is unavailable."
+      : "The network is available, but the dashboard website is unavailable or not providing valid current data.";
+
+    document.title = headline;
+    document.getElementById("headline").textContent = headline;
+    document.getElementById("detail").textContent = detail;
+
+    document.getElementById("network-status").textContent =
+      networkOutage
+        ? "Network status: UNAVAILABLE"
+        : "Network status: AVAILABLE";
+
+    if (networkOutage) {
+      const gateway = params.get("gateway") || "UNKNOWN";
+      const gatewayLoss = params.get("gateway_loss") || "UNKNOWN";
+      const external = params.get("external") || "UNKNOWN";
+      const externalLoss = params.get("external_loss") || "UNKNOWN";
+
+      document.getElementById("network-details").textContent =
+        `Gateway: ${gateway} | Gateway packet loss: ${gatewayLoss}% | ` +
+        `External: ${external} | External packet loss: ${externalLoss}%`;
+    } else {
+      document.getElementById("network-details").textContent =
+        "Network connectivity test is passing.";
+    }
+
+    document.getElementById("last-check").textContent =
+      `Last successful health check: ${lastSuccessful}`;
+  </script>
+</body>
+</html>
