@@ -214,6 +214,7 @@ class VDOT:
         ).click()
 
         print("VDOT camera wall ready.")
+        return True
 
     def show(self):
         self.page.bring_to_front()
@@ -221,8 +222,8 @@ class VDOT:
     def check(self):
         """
         Returns True if VDOT is still displaying the operator wall.
-        Returns False if we've been redirected elsewhere or
-        the logout popup is visible.
+        Returns False if we've been redirected elsewhere,
+        the logout popup is visible, or the camera wall is not visible.
         """
 
         if not self.page.url.startswith(
@@ -230,6 +231,21 @@ class VDOT:
         ):
             return False
 
-        return not self.page.locator(
+        if self.page.locator(
             "#logged-out-message"
-        ).is_visible()
+        ).is_visible():
+            return False
+
+        try:
+            frame = self.page.frame_locator(
+                'iframe[title="Operator Application"]'
+            )
+
+            wall = frame.locator(
+                "div.wall.page"
+            )
+
+            return wall.is_visible(timeout=2000)
+
+        except Exception:
+            return False

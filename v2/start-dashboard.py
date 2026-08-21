@@ -20,25 +20,25 @@ from station_dashboard.vdot import VDOT
 DASHBOARDS = {
     "BloomWX": {
         "url": "http://127.0.0.1:8082/bloomwx.html",
-        "profile": "/tmp/v2-bloomwx-profile",
+        "profile": "/home/station1/station-dashboard/chromium-profiles/bloomwx",
         "port": 9230,
         "log": "/tmp/v2-bloomwx-launch.log",
     },
     "VDOT": {
         "url": "http://127.0.0.1:8082/vdot.html",
-        "profile": "/tmp/v2-vdot-profile",
+        "profile": "/home/station1/station-dashboard/chromium-profiles/vdot",
         "port": 9231,
         "log": "/tmp/v2-vdot-launch.log",
     },
     "IamResponding": {
         "url": "http://127.0.0.1:8082/iamresponding.html",
-        "profile": "/tmp/v2-iamresponding-profile",
+        "profile": "/home/station1/station-dashboard/chromium-profiles/iamresponding",
         "port": 9232,
         "log": "/tmp/v2-iamresponding-launch.log",
     },
     "PulsePoint": {
         "url": "http://127.0.0.1:8082/pulsepoint.html",
-        "profile": "/tmp/v2-pulsepoint-profile",
+        "profile": "/home/station1/station-dashboard/chromium-profiles/pulsepoint",
         "port": 9233,
         "log": "/tmp/v2-pulsepoint-launch.log",
     },
@@ -1156,6 +1156,58 @@ def main():
         )
 
     print("V2 wrapper server is ready.")
+
+    #
+    # Prime Chromium during cold startup.
+    #
+    # This deliberately creates and closes one temporary Chromium
+    # instance before BloomWX. The purpose is to test whether the
+    # first Chromium instance created during a cold graphical boot
+    # behaves differently from subsequent Chromium instances.
+    #
+    print()
+    print("===== PRIMING CHROMIUM =====")
+
+    prime_profile = "/tmp/v2-chromium-prime-profile"
+    prime_port = 9229
+
+    print("Starting temporary Chromium prime window...")
+
+    subprocess.Popen(
+        [
+            str(BASE_DIR / "scripts/start-v2-window.sh"),
+            "about:blank",
+            prime_profile,
+            str(prime_port),
+        ],
+        stdout=open("/tmp/v2-chromium-prime-launch.log", "a"),
+        stderr=subprocess.STDOUT,
+    )
+
+    print("Waiting 3 seconds for Chromium prime...")
+    time.sleep(3)
+
+    print("Closing temporary Chromium prime window...")
+
+    subprocess.run(
+        [
+            "pkill",
+            "-f",
+            "/tmp/v2-chromium-prime-profile",
+        ],
+        check=False,
+    )
+
+    time.sleep(1)
+
+    subprocess.run(
+        [
+            "rm",
+            "-rf",
+            prime_profile,
+        ],
+        check=False,
+    )
 
     #
     # Start all four Chromium windows.
