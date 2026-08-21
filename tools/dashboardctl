@@ -2,7 +2,7 @@
 
 PROJECT_DIR="$HOME/station-dashboard"
 SERVICE="station-dashboard.service"
-VERSION="v1.5.0 / V2 development"
+VERSION="v2.1.0"
 
 show_help() {
 cat << EOF
