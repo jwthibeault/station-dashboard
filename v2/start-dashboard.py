@@ -15,6 +15,7 @@ from playwright.sync_api import sync_playwright
 from station_dashboard.bloomwx import BloomWX
 from station_dashboard.iamresponding import IamResponding
 from station_dashboard.vdot import VDOT
+from station_dashboard.pulsepoint import PulsePoint
 
 
 DASHBOARDS = {
@@ -249,11 +250,22 @@ def initialize_iamresponding(browser, credentials):
     print("IamResponding health check passed.")
 
 
-def initialize_pulsepoint(browser):
+def initialize_pulsepoint(browser, credentials):
     page = get_page(browser, "PulsePoint")
 
     print(f"PulsePoint page: {page.url}")
-    print("PulsePoint placeholder is running.")
+
+    pulsepoint = PulsePoint(
+        page,
+        credentials["pulsepoint"],
+    )
+
+    pulsepoint.open()
+
+    if not pulsepoint.check():
+        raise RuntimeError(
+            "PulsePoint health check failed."
+        )
 
 
 def record_successful_check(health_state, name):
@@ -295,7 +307,10 @@ def initialize_dashboard(
                 )
 
             elif name == "PulsePoint":
-                initialize_pulsepoint(browser)
+                initialize_pulsepoint(
+                    browser,
+                    credentials,
+                )
 
             results[name] = True
             record_successful_check(
@@ -571,7 +586,10 @@ def create_dashboard(name, page, credentials):
         )
 
     if name == "PulsePoint":
-        return None
+        return PulsePoint(
+            page,
+            credentials["pulsepoint"],
+        )
 
     raise RuntimeError(
         f"Unknown dashboard: {name}"

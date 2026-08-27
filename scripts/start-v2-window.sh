@@ -19,6 +19,7 @@ env DISPLAY=:0 \
     /usr/bin/chromium \
     --user-data-dir="$PROFILE" \
     --remote-debugging-port="$CDP_PORT" \
+    --remote-allow-origins="http://127.0.0.1:$CDP_PORT" \
     --no-first-run \
     --disable-session-crashed-bubble \
     --disable-restore-session-state \

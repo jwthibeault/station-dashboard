@@ -1,7 +1,7 @@
 # James City Bruton Volunteer Fire Department
 # Station Dashboard
 
-**Current Version: V2.2.0**
+**Current Version: V2.3.0**
 
 ---
 
@@ -18,7 +18,7 @@ The production dashboard uses a four-window Chromium architecture:
 
 The dashboard is designed to operate unattended 24 hours a day.
 
-V2.2.0 is the current production release.
+V2.3.0 is the current production release.
 
 ---
 
@@ -647,7 +647,7 @@ as the production branch.
 The current production release is:
 
 ```text
-V2.2.0
+V2.3.0
 ```
 
 The V2 development branch is:
@@ -691,7 +691,7 @@ Before making significant dashboard changes:
 5. Commit known-good changes.
 6. Push production releases to GitHub.
 
-The V2.2.0 release represents the current known-good production baseline.
+The V2.3.0 release represents the current known-good production baseline.
 
 ---
 
@@ -714,7 +714,7 @@ The system is intended for unattended 24/7 operation.
 
 # Current Production Status
 
-**V2.2.0 is the production Station Dashboard.**
+**V2.3.0 is the production Station Dashboard.**
 
 The original V1 dashboard is no longer used for normal station operation.
 
