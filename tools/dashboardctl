@@ -2,7 +2,7 @@
 
 PROJECT_DIR="$HOME/station-dashboard"
 SERVICE="station-dashboard.service"
-VERSION="v2.2.0"
+VERSION="v2.4.0"
 
 show_help() {
 cat << EOF
@@ -21,26 +21,17 @@ Commands:
     status
         Display dashboard status
 
-    maintenance
+    stop
         Stop the dashboard and Chromium
 
-    production
+    start
         Start Chromium and the dashboard
 
     restart
         Restart the dashboard
 
-    v2-status
-        Display V2 development dashboard status
-
-    v2-stop
-        Stop V2 development dashboard and its Chromium windows
-
-    v2-start
-        Start V2 development dashboard
-
-    v2-restart
-        Restart V2 development dashboard
+    health MMDDYY HHMM MMDDYY HHMM
+        Run a detailed health analysis for a specific time period
 
     version
         Display dashboard version
@@ -83,7 +74,7 @@ Version:            $VERSION
 EOF
 }
 
-maintenance() {
+stop_dashboard() {
 
     echo "Stopping dashboard..."
     sudo systemctl stop "$SERVICE"
@@ -95,7 +86,7 @@ maintenance() {
     echo "Maintenance mode enabled."
 }
 
-production() {
+start_dashboard() {
 
     echo "Starting Chromium..."
 
@@ -127,90 +118,59 @@ restart_dashboard() {
     echo "Dashboard restarted."
 }
 
-v2_status() {
 
-    echo
-    echo "========================================="
-    echo " V2 Development Dashboard Status"
-    echo "========================================="
+health() {
 
-    for port in 9230 9231 9232 9233; do
-        if curl -s --max-time 1 \
-            "http://127.0.0.1:${port}/json/version" \
-            >/dev/null 2>&1; then
-            echo "CDP $port:              Running"
-        else
-            echo "CDP $port:              Stopped"
-        fi
-    done
-
-    if ss -ltn 2>/dev/null | grep -q ':8082 '; then
-        echo "V2 wrapper server:      Running"
-    else
-        echo "V2 wrapper server:      Stopped"
+    if [ "$#" -ne 4 ]; then
+        echo
+        echo "Usage:"
+        echo "  ./tools/dashboardctl health MMDDYY HHMM MMDDYY HHMM"
+        echo
+        echo "Example:"
+        echo "  ./tools/dashboardctl health 082526 1400 082526 1900"
+        echo
+        return 1
     fi
 
-    if pgrep -af 'v2/start-dashboard.py' >/dev/null; then
-        echo "V2 dashboard process:   Running"
-    else
-        echo "V2 dashboard process:   Stopped"
+    if ! [[ "$1" =~ ^[0-9]{6}$ &&
+            "$2" =~ ^[0-9]{4}$ &&
+            "$3" =~ ^[0-9]{6}$ &&
+            "$4" =~ ^[0-9]{4}$ ]]; then
+        echo
+        echo "ERROR: Invalid date/time format."
+        echo "Expected: MMDDYY HHMM MMDDYY HHMM"
+        echo
+        return 1
+    fi
+
+    if ! python3 - "$1" "$2" "$3" "$4" <<'PYVALID'
+from datetime import datetime
+import sys
+
+try:
+    start = datetime.strptime(sys.argv[1] + sys.argv[2], "%m%d%y%H%M")
+    end = datetime.strptime(sys.argv[3] + sys.argv[4], "%m%d%y%H%M")
+except ValueError:
+    print("ERROR: Invalid date/time period.")
+    print("Check the date and time values.")
+    sys.exit(1)
+
+if end <= start:
+    print("ERROR: Invalid date/time period.")
+    print("The end time must be later than the start time.")
+    sys.exit(1)
+PYVALID
+    then
+        return 1
     fi
 
     echo
-}
-
-
-v2_stop() {
-
-    echo "Stopping V2 dashboard..."
-
-    pkill -f 'v2/start-dashboard.py' >/dev/null 2>&1 || true
-
-    echo "Stopping V2 Chromium windows..."
-
-    for profile in \
-        /tmp/v2-bloomwx-profile \
-        /tmp/v2-vdot-profile \
-        /tmp/v2-iamresponding-profile \
-        /tmp/v2-pulsepoint-profile
-    do
-        pkill -f "$profile" >/dev/null 2>&1 || true
-    done
-
-    echo "Stopping V2 wrapper server..."
-    fuser -k 8082/tcp >/dev/null 2>&1 || true
-
-    sleep 2
-
+    echo "Running health analysis..."
+    echo "Period: $1 $2 → $3 $4"
     echo
-    echo "V2 development dashboard stopped."
-}
 
-
-v2_start() {
-
-    echo "Starting V2 development dashboard..."
-
-    cd "$PROJECT_DIR" || exit 1
-
-    source venv/bin/activate
-
-    python3 -u v2/start-dashboard.py \
-        >/tmp/v2-start-dashboard.log 2>&1 &
-
-    echo
-    echo "V2 development dashboard starting."
-    echo "Log: /tmp/v2-start-dashboard.log"
-}
-
-
-v2_restart() {
-
-    echo "Restarting V2 development dashboard..."
-
-    v2_stop
-    sleep 2
-    v2_start
+    python3 "$PROJECT_DIR/tools/analyze-daily-log.py" \
+        --period "$1" "$2" "$3" "$4"
 }
 
 
@@ -225,26 +185,18 @@ case "$1" in
     status)
         status
         ;;
-    maintenance)
-        maintenance
+    stop)
+        stop_dashboard
         ;;
-    production)
-        production
+    start)
+        start_dashboard
         ;;
     restart)
         restart_dashboard
         ;;
-    v2-status)
-        v2_status
-        ;;
-    v2-stop)
-        v2_stop
-        ;;
-    v2-start)
-        v2_start
-        ;;
-    v2-restart)
-        v2_restart
+    health)
+        shift
+        health "$@"
         ;;
     version)
         version
