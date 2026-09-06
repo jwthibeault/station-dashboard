@@ -21,6 +21,8 @@ class IamResponding:
             GLOBAL_HUB: None,
         }
         self._last_hub_update = None
+        self._hub_signalr_observed = False
+        self._hub_monitoring_warning_logged = False
         self._heartbeat_monitor_started_at = time.monotonic()
         self._heartbeat_failure_detected = False
         self._last_failure_reason = None
@@ -64,6 +66,8 @@ class IamResponding:
             GLOBAL_HUB: None,
         }
         self._last_hub_update = None
+        self._hub_signalr_observed = False
+        self._hub_monitoring_warning_logged = False
         self._heartbeat_monitor_started_at = time.monotonic()
 
     def _record_websocket_created(self, event):
@@ -75,6 +79,9 @@ class IamResponding:
         request_id = event["requestId"]
         self._socket_names[request_id] = socket_name
         self._active_sockets.add(request_id)
+
+        if socket_name == HUB_SIGNALR:
+            self._hub_signalr_observed = True
 
         print(f"IamResponding SignalR connected: {socket_name}.")
 
@@ -126,6 +133,12 @@ class IamResponding:
             pass
 
     def _heartbeat_timed_out(self):
+        # A CDP monitor can attach after the page already opened its
+        # WebSockets. Do not mistake an unobserved HubSignalR socket for
+        # a missing heartbeat and force an endless recovery loop.
+        if not self._hub_signalr_observed:
+            return False
+
         last_heartbeat = (
             self._last_heartbeats[HUB_SIGNALR]
             or self._heartbeat_monitor_started_at
@@ -205,6 +218,9 @@ class IamResponding:
         )
 
         hub_status = "connected" if hub_connected else "not connected"
+        monitoring_status = (
+            "active" if self._hub_signalr_observed else "waiting for socket"
+        )
         print(
             "IamResponding SignalR status: "
             f"HubSignalR heartbeat age="
@@ -213,7 +229,8 @@ class IamResponding:
             f"{self._age_text(self._last_heartbeats[GLOBAL_HUB])}; "
             f"HubSignalR update age="
             f"{self._age_text(self._last_hub_update)}; "
-            f"HubSignalR={hub_status}."
+            f"HubSignalR={hub_status}; "
+            f"heartbeat monitoring={monitoring_status}."
         )
 
     def show(self):
@@ -249,6 +266,17 @@ class IamResponding:
                     f"detected for {HEARTBEAT_TIMEOUT_SECONDS} seconds."
                 )
                 return False
+
+            if (
+                not self._hub_signalr_observed
+                and not self._hub_monitoring_warning_logged
+            ):
+                print(
+                    "IamResponding HubSignalR socket has not yet been "
+                    "observed; heartbeat enforcement is waiting for a "
+                    "mapped HubSignalR connection."
+                )
+                self._hub_monitoring_warning_logged = True
 
             self.log_signalr_status()
 
