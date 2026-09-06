@@ -10,6 +10,7 @@ from collections import defaultdict
 
 COMPONENTS = ["PulsePoint", "BloomWX", "IamResponding", "VDOT"]
 LOCAL_TZ = ZoneInfo("America/New_York")
+HEALTH_CHECK_MAX_SILENCE_SECONDS = 180
 RELOAD_REASON_LABELS = {
     "signalr_heartbeat_timeout": "SignalR heartbeat timeout",
     "visible_server_connection_error": "Visible server connection error",
@@ -205,6 +206,99 @@ boots = [
     boot for boot in boots
     if start <= boot["first"] <= end
 ]
+
+
+# ----------------------------------------------------------------------
+# MONITOR LIVENESS
+# ----------------------------------------------------------------------
+
+# A dashboard monitor normally records a health-check result every
+# 30 seconds. Track activity independently from recovery events so a
+# dead Chromium process cannot be reported as a quiet, healthy dashboard.
+last_health_activity = {
+    component: None
+    for component in COMPONENTS
+}
+last_successful_check = {
+    component: None
+    for component in COMPONENTS
+}
+cdp_disconnects = defaultdict(list)
+active_cdp_outages = {}
+
+for ts, line in entries:
+    for component in COMPONENTS:
+        if f"{component} health check PASSED" in line:
+            last_health_activity[component] = ts
+            last_successful_check[component] = ts
+
+        elif (
+            f"{component} health check FAILED" in line
+            or f"{component} health-monitoring error" in line
+        ):
+            last_health_activity[component] = ts
+
+        if f"{component} monitor connection lost:" in line:
+            cdp_disconnects[component].append(ts)
+            active_cdp_outages.setdefault(component, ts)
+
+        elif (
+            f"{component} continuous health monitoring active."
+            in line
+        ):
+            active_cdp_outages.pop(component, None)
+
+
+def format_duration(value):
+    return str(value).split(".", 1)[0]
+
+
+monitoring = {}
+monitoring_alerts = []
+
+for component in COMPONENTS:
+    last_activity = last_health_activity[component]
+    last_success = last_successful_check[component]
+    active_cdp_outage = active_cdp_outages.get(component)
+
+    if active_cdp_outage:
+        age = end - active_cdp_outage
+        state = "CDP UNAVAILABLE"
+        detail = (
+            "CDP connection has remained unavailable for "
+            f"{format_duration(age)}"
+        )
+
+    elif last_activity is None:
+        age = None
+        state = "NO HEALTH CHECKS"
+        detail = "No health-check activity was recorded"
+
+    else:
+        age = end - last_activity
+
+        if age.total_seconds() > HEALTH_CHECK_MAX_SILENCE_SECONDS:
+            state = "STALE HEALTH CHECKS"
+            detail = (
+                "No health-check activity for "
+                f"{format_duration(age)}"
+            )
+        else:
+            state = "ACTIVE"
+            detail = "Health checks are current"
+
+    monitoring[component] = {
+        "state": state,
+        "detail": detail,
+        "last_activity": last_activity,
+        "last_success": last_success,
+        "cdp_disconnect_count": len(cdp_disconnects[component]),
+    }
+
+    if state != "ACTIVE":
+        monitoring_alerts.append(
+            f"{component}: {detail.lower()}."
+        )
 
 
 # ----------------------------------------------------------------------
@@ -499,6 +593,32 @@ for component in COMPONENTS:
                 f"      #{i}: {format_time(incident['start'])} "
                 f"→ STILL UNRESOLVED"
             )
+
+print()
+
+
+# ----------------------------------------------------------------------
+# MONITORING COVERAGE
+# ----------------------------------------------------------------------
+
+print("MONITORING COVERAGE")
+
+for component in COMPONENTS:
+    status = monitoring[component]
+    last_success = status["last_success"]
+
+    print(f"  {component}: {status['state']}")
+    print(f"    {status['detail']}")
+    print(
+        "    Last successful health check: "
+        f"{format_time(last_success)}"
+    )
+
+    if status["cdp_disconnect_count"]:
+        print(
+            "    CDP connection losses in period: "
+            f"{status['cdp_disconnect_count']}"
+        )
 
 print()
 
@@ -852,6 +972,7 @@ if (
     len(boots) > 0
     or dashboard_nonboot_starts > 0
     or unresolved_components
+    or monitoring_alerts
 ):
 
     overall_status = "ATTENTION REQUIRED"
@@ -937,6 +1058,32 @@ if "--email" in sys.argv:
             print(f"Recovery: {min(durations)}–{max(durations)} sec")
 
     print()
+    print("MONITORING")
+
+    for component in COMPONENTS:
+        status = monitoring[component]
+        last_success = status["last_success"]
+
+        print()
+        print(component)
+
+        if status["state"] == "ACTIVE":
+            print("✓ Health checks current")
+        else:
+            print(f"⚠️ {status['state']}: {status['detail']}")
+
+        print(
+            "Last successful check: "
+            f"{format_time(last_success)}"
+        )
+
+        if status["cdp_disconnect_count"]:
+            print(
+                "CDP connection losses: "
+                f"{status['cdp_disconnect_count']}"
+            )
+
+    print()
     print("NETWORK")
 
     if network_failed or network_degraded:
@@ -988,6 +1135,8 @@ if "--email" in sys.argv:
         notable.append(
             f"{network_failed} network failure(s) were detected."
         )
+
+    notable.extend(monitoring_alerts)
 
     print()
 
