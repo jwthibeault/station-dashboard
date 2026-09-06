@@ -1,12 +1,57 @@
+import json
+import time
+
 from playwright.sync_api import Page, TimeoutError
+
+
+HEARTBEAT_TIMEOUT_SECONDS = 60
 
 
 class IamResponding:
     def __init__(self, page: Page, credentials: dict):
         self.page = page
         self.credentials = credentials
+        self._last_heartbeat = None
+        self._heartbeat_monitor_started_at = time.monotonic()
+        self._heartbeat_failure_detected = False
+
+        self._cdp_session = self.page.context.new_cdp_session(
+            self.page
+        )
+        self._cdp_session.send("Network.enable")
+        self._cdp_session.on(
+            "Network.webSocketFrameReceived",
+            self._record_heartbeat,
+        )
+
+        print("IamResponding HubSignalR heartbeat monitoring active.")
+
+    def _record_heartbeat(self, event):
+        try:
+            payload = event["response"]["payloadData"]
+
+            for message in payload.split("\x1e"):
+                if json.loads(message).get("type") == 6:
+                    self._last_heartbeat = time.monotonic()
+
+        except (KeyError, TypeError, ValueError):
+            pass
+
+    def _heartbeat_timed_out(self):
+        last_heartbeat = (
+            self._last_heartbeat
+            or self._heartbeat_monitor_started_at
+        )
+
+        return (
+            time.monotonic() - last_heartbeat
+            >= HEARTBEAT_TIMEOUT_SECONDS
+        )
 
     def open(self):
+        self._last_heartbeat = None
+        self._heartbeat_monitor_started_at = time.monotonic()
+
         self.page.goto("https://dashboard.iamresponding.com")
 
         try:
@@ -54,6 +99,8 @@ class IamResponding:
         self.page.bring_to_front()
 
     def check(self):
+        self._heartbeat_failure_detected = False
+
         if not self.page.url.startswith(
             "https://dashboard.iamresponding.com"
         ):
@@ -70,10 +117,21 @@ class IamResponding:
                 )
                 return False
 
+            if self._heartbeat_timed_out():
+                self._heartbeat_failure_detected = True
+                print(
+                    "IamResponding HubSignalR heartbeat has not been "
+                    f"detected for {HEARTBEAT_TIMEOUT_SECONDS} seconds."
+                )
+                return False
+
         except Exception:
             return False
 
         return True
+
+    def heartbeat_failure_detected(self):
+        return self._heartbeat_failure_detected
 
     def is_emergency(self):
         return self.page.locator(

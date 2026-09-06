@@ -880,6 +880,42 @@ def monitor_dashboard(
                             )
 
                         else:
+                            if (
+                                name == "IamResponding"
+                                and dashboard.heartbeat_failure_detected()
+                            ):
+                                print(
+                                    "IamResponding HubSignalR heartbeat "
+                                    "timeout reached. Reloading immediately..."
+                                )
+
+                                recovered = recover_dashboard(
+                                    name,
+                                    dashboard,
+                                    page,
+                                    health_state,
+                                )
+
+                                if recovered:
+                                    consecutive_failures = 0
+                                    down = False
+                                else:
+                                    down = True
+
+                                    show_dashboard_down(
+                                        page,
+                                        name,
+                                        health_state,
+                                    )
+
+                                    print(
+                                        "IamResponding remains DOWN. "
+                                        "Continuing health monitoring."
+                                    )
+
+                                time.sleep(MONITOR_INTERVAL)
+                                continue
+
                             consecutive_failures += 1
 
                             print(
