@@ -1,7 +1,7 @@
 # James City Bruton Volunteer Fire Department
 # Station Dashboard
 
-**Current Version: V2.3.0**
+**Current Version: v2.4.4**
 
 ---
 
@@ -18,7 +18,7 @@ The production dashboard uses a four-window Chromium architecture:
 
 The dashboard is designed to operate unattended 24 hours a day.
 
-V2.3.0 is the current production release.
+v2.4.4 is the current production release.
 
 ---
 
@@ -76,10 +76,10 @@ The V2 supervisor manages initialization, health monitoring, network monitoring,
 
 | Dashboard | Local Wrapper URL | Chromium Profile | CDP Port |
 |---|---|---|---:|
-| BloomWX | `/bloomwx.html` | `/tmp/v2-bloomwx-profile` | 9230 |
-| VDOT | `/vdot.html` | `/tmp/v2-vdot-profile` | 9231 |
-| IamResponding | `/iamresponding.html` | `/tmp/v2-iamresponding-profile` | 9232 |
-| PulsePoint | `/pulsepoint.html` | `/tmp/v2-pulsepoint-profile` | 9233 |
+| BloomWX | `/bloomwx.html` | `/home/station1/station-dashboard/chromium-profiles/bloomwx` | 9230 |
+| VDOT | `/vdot.html` | `/home/station1/station-dashboard/chromium-profiles/vdot` | 9231 |
+| IamResponding | `/iamresponding.html` | `/home/station1/station-dashboard/chromium-profiles/iamresponding` | 9232 |
+| PulsePoint | `/pulsepoint.html` | `/home/station1/station-dashboard/chromium-profiles/pulsepoint` | 9233 |
 
 The local wrapper server runs on:
 
@@ -194,15 +194,16 @@ V2 performs continuous health checks every:
 
 The health monitors operate independently for each dashboard.
 
-The monitored dashboards currently include:
+All four dashboards are monitored:
 
 - BloomWX
 - VDOT
 - IamResponding
+- PulsePoint
 
-PulsePoint currently has placeholder-only monitoring and remains displayed as an independent Chromium window.
-
-If a monitored dashboard fails its health check, V2 can display the local dashboard-down page and attempt recovery.
+For ordinary website failures, one failed check is tolerated. A second
+consecutive failed check starts that dashboard's recovery flow. The local
+dashboard-down page is shown if recovery does not succeed.
 
 ---
 
@@ -212,12 +213,10 @@ Individual website failures are handled independently when the station network i
 
 Recovery may include:
 
-1. Detecting a failed health check.
-2. Displaying the dashboard-down page.
-3. Reloading or reopening the dashboard.
-4. Allowing a 30-second recovery grace period.
-5. Performing another health check.
-6. Returning to normal monitoring after successful recovery.
+1. Reopening only the affected dashboard page and completing its normal login or display setup.
+2. Allowing a 30-second recovery grace period.
+3. Performing another health check.
+4. Returning to normal monitoring after successful recovery.
 
 The last successful health-check time is maintained for each dashboard.
 
@@ -249,6 +248,32 @@ The V2 architecture allows IamResponding to recover independently from other das
 
 Network-wide recovery also reloads the IamResponding dashboard after connectivity is restored.
 
+The health check verifies that the page is still on the IamResponding site and
+that it does not display the visible server-connection error:
+
+```text
+Trying to re-establish connection to the server
+```
+
+It also listens on the existing CDP connection for HubSignalR type-6 heartbeat
+frames. If no heartbeat is detected for 60 seconds, IamResponding immediately
+uses its normal, IaR-only recovery flow; it does not wait for a second failed
+30-second health check. This catches a stale SignalR connection even when the
+page still appears normal.
+
+---
+
+# PulsePoint Monitoring
+
+PulsePoint health is based on the incident API's actual polling activity rather
+than page appearance alone. The monitor checks the browser performance entries
+for PulsePoint incident API requests.
+
+PulsePoint is unhealthy if no incident API request has been observed yet, or if
+the most recent incident API request is 90 seconds old. This allows the normal
+per-dashboard recovery flow to reinitialize PulsePoint when its visible page is
+alive but its incident data has stopped updating.
+
 ---
 
 # Network Monitoring
@@ -258,10 +283,10 @@ V2 includes a separate network health monitor.
 Network checks run every:
 
 ```text
-5 seconds
+5 minutes
 ```
 
-The network monitor checks both:
+Each network check sends 20 ICMP packets to both:
 
 - The local network gateway
 - An external Internet target
@@ -275,11 +300,11 @@ The default external target is:
 Network availability requires:
 
 - Zero packet loss to the local gateway
-- No more than 25% packet loss to the external target
+- No more than 10% packet loss to the external target
 
 The network monitor requires two consecutive failed checks before declaring a network outage.
 
-It requires two consecutive successful checks before declaring the network restored.
+After a confirmed outage, one successful check declares the network restored.
 
 ---
 
@@ -410,34 +435,28 @@ Display the current production status:
 ./tools/dashboardctl status
 ```
 
-Display V2 runtime status:
+Stop the dashboard and Chromium:
 
 ```bash
-./tools/dashboardctl v2-status
+./tools/dashboardctl stop
 ```
 
-Stop the V2 dashboard:
+Start Chromium and the dashboard:
 
 ```bash
-./tools/dashboardctl v2-stop
+./tools/dashboardctl start
 ```
 
-Start V2 manually:
-
-```bash
-./tools/dashboardctl v2-start
-```
-
-Restart V2 manually:
-
-```bash
-./tools/dashboardctl v2-restart
-```
-
-Restart the production systemd service:
+Restart the dashboard service:
 
 ```bash
 ./tools/dashboardctl restart
+```
+
+Analyze dashboard health for a time period:
+
+```bash
+./tools/dashboardctl health MMDDYY HHMM MMDDYY HHMM
 ```
 
 Display the installed dashboard version:
@@ -496,15 +515,16 @@ Individual Chromium launch logs are stored in:
 /tmp/v2-bloomwx-launch.log
 /tmp/v2-vdot-launch.log
 /tmp/v2-iamresponding-launch.log
+/tmp/v2-pulsepoint-launch.log
 ```
 
 The Chromium browser profiles are stored in:
 
 ```text
-/tmp/v2-bloomwx-profile
-/tmp/v2-vdot-profile
-/tmp/v2-iamresponding-profile
-/tmp/v2-pulsepoint-profile
+/home/station1/station-dashboard/chromium-profiles/bloomwx
+/home/station1/station-dashboard/chromium-profiles/vdot
+/home/station1/station-dashboard/chromium-profiles/iamresponding
+/home/station1/station-dashboard/chromium-profiles/pulsepoint
 ```
 
 These profile directories are actively used by the running dashboard and should not be manually deleted while V2 is operating.
@@ -536,6 +556,7 @@ Central V2 process responsible for:
 ```text
 station_dashboard/bloomwx.py
 station_dashboard/iamresponding.py
+station_dashboard/pulsepoint.py
 station_dashboard/vdot.py
 ```
 
@@ -584,6 +605,7 @@ station-dashboard/
 │   ├── start-dashboard.py
 │   ├── start-bloomwx.py
 │   ├── start-iamresponding.py
+│   ├── start-pulsepoint.py
 │   ├── start-vdot.py
 │   └── windows/
 │       ├── bloomwx.html
@@ -598,6 +620,7 @@ station-dashboard/
 │   ├── config.py
 │   ├── iamresponding.py
 │   ├── main.py
+│   ├── pulsepoint.py
 │   └── vdot.py
 │
 ├── scripts/
@@ -607,7 +630,10 @@ station-dashboard/
 │   └── start-v2-window.sh
 │
 ├── tools/
-│   └── dashboardctl
+│   ├── analyze-daily-email.py
+│   ├── analyze-daily-log.py
+│   ├── dashboardctl
+│   └── send-daily-health-report.sh
 │
 ├── install/
 ├── config.json
@@ -647,7 +673,7 @@ as the production branch.
 The current production release is:
 
 ```text
-V2.3.0
+v2.4.4
 ```
 
 The V2 development branch is:
@@ -656,16 +682,10 @@ The V2 development branch is:
 v2-development
 ```
 
-The current production commit is:
+The current production release tag is:
 
 ```text
-841d099
-```
-
-Release tag:
-
-```text
-V2.1.0
+v2.4.4
 ```
 
 The V1 production history remains preserved in Git.
@@ -691,7 +711,7 @@ Before making significant dashboard changes:
 5. Commit known-good changes.
 6. Push production releases to GitHub.
 
-The V2.3.0 release represents the current known-good production baseline.
+The v2.4.4 release represents the current known-good production baseline.
 
 ---
 
@@ -714,7 +734,7 @@ The system is intended for unattended 24/7 operation.
 
 # Current Production Status
 
-**V2.3.0 is the production Station Dashboard.**
+**v2.4.4 is the production Station Dashboard.**
 
 The original V1 dashboard is no longer used for normal station operation.
 
@@ -727,6 +747,8 @@ V2 provides:
 - Independent website health monitoring
 - Automatic website recovery
 - BloomWX stale-data detection
+- IamResponding visible-error and HubSignalR heartbeat detection
+- PulsePoint incident-API polling monitoring
 - Station-wide network monitoring
 - Coordinated network recovery
 - Local network-outage display
