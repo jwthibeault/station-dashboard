@@ -601,6 +601,14 @@ def health_failure_reason(dashboard):
     return reason or "health_check_failed"
 
 
+def wait_for_monitor_interval(name, page):
+    """Keep IaR's CDP event loop active while waiting for its next check."""
+    if name == "IamResponding":
+        page.wait_for_timeout(MONITOR_INTERVAL * 1000)
+    else:
+        time.sleep(MONITOR_INTERVAL)
+
+
 def log_reload_event(name, trigger):
     print(f"RELOAD_EVENT dashboard={name} trigger={trigger}")
 
@@ -642,7 +650,7 @@ def recover_dashboard(
             "resuming health checks."
         )
 
-        time.sleep(MONITOR_INTERVAL)
+        wait_for_monitor_interval(name, page)
 
         healthy = dashboard.check()
 
@@ -713,6 +721,9 @@ def monitor_dashboard(
                     credentials,
                 )
 
+                if name == "IamResponding":
+                    dashboard.establish_signalr_monitoring()
+
                 if dashboard is None:
                     print(
                         f"{name} monitoring is currently "
@@ -734,7 +745,7 @@ def monitor_dashboard(
                         "the first health check."
                     )
 
-                    time.sleep(MONITOR_INTERVAL)
+                    wait_for_monitor_interval(name, page)
 
                     print(
                         f"{name} startup grace period complete. "
@@ -824,7 +835,7 @@ def monitor_dashboard(
                                     "before health checks resume."
                                 )
 
-                                time.sleep(MONITOR_INTERVAL)
+                                wait_for_monitor_interval(name, page)
 
                                 if dashboard is None:
                                     healthy = True
@@ -962,7 +973,7 @@ def monitor_dashboard(
                                         "Continuing health monitoring."
                                     )
 
-                                time.sleep(MONITOR_INTERVAL)
+                                wait_for_monitor_interval(name, page)
                                 continue
 
                             consecutive_failures += 1
@@ -1036,7 +1047,7 @@ def monitor_dashboard(
                                         "Continuing health monitoring."
                                     )
 
-                        time.sleep(MONITOR_INTERVAL)
+                        wait_for_monitor_interval(name, page)
 
                     except Exception as check_error:
                         print(
@@ -1057,7 +1068,7 @@ def monitor_dashboard(
                                 f"{down_error}"
                             )
 
-                        time.sleep(MONITOR_INTERVAL)
+                        wait_for_monitor_interval(name, page)
 
         except Exception as connection_error:
             print(

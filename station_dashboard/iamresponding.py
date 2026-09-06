@@ -6,12 +6,21 @@ from playwright.sync_api import Page, TimeoutError
 
 HEARTBEAT_TIMEOUT_SECONDS = 60
 
+HUB_SIGNALR = "HubSignalR"
+GLOBAL_HUB = "Global"
+
 
 class IamResponding:
     def __init__(self, page: Page, credentials: dict):
         self.page = page
         self.credentials = credentials
-        self._last_heartbeat = None
+        self._socket_names = {}
+        self._active_sockets = set()
+        self._last_heartbeats = {
+            HUB_SIGNALR: None,
+            GLOBAL_HUB: None,
+        }
+        self._last_hub_update = None
         self._heartbeat_monitor_started_at = time.monotonic()
         self._heartbeat_failure_detected = False
         self._last_failure_reason = None
@@ -21,26 +30,104 @@ class IamResponding:
         )
         self._cdp_session.send("Network.enable")
         self._cdp_session.on(
+            "Network.webSocketCreated",
+            self._record_websocket_created,
+        )
+        self._cdp_session.on(
+            "Network.webSocketClosed",
+            self._record_websocket_closed,
+        )
+        self._cdp_session.on(
             "Network.webSocketFrameReceived",
             self._record_heartbeat,
         )
 
-        print("IamResponding HubSignalR heartbeat monitoring active.")
+        print("IamResponding SignalR monitoring active.")
+
+    @staticmethod
+    def _socket_name(url):
+        normalized_url = url.lower()
+
+        if "/hubsignalr" in normalized_url:
+            return HUB_SIGNALR
+
+        if "/globalhub" in normalized_url:
+            return GLOBAL_HUB
+
+        return None
+
+    def _reset_signalr_state(self):
+        self._socket_names = {}
+        self._active_sockets = set()
+        self._last_heartbeats = {
+            HUB_SIGNALR: None,
+            GLOBAL_HUB: None,
+        }
+        self._last_hub_update = None
+        self._heartbeat_monitor_started_at = time.monotonic()
+
+    def _record_websocket_created(self, event):
+        socket_name = self._socket_name(event.get("url", ""))
+
+        if socket_name is None:
+            return
+
+        request_id = event["requestId"]
+        self._socket_names[request_id] = socket_name
+        self._active_sockets.add(request_id)
+
+        print(f"IamResponding SignalR connected: {socket_name}.")
+
+    def _record_websocket_closed(self, event):
+        request_id = event["requestId"]
+        socket_name = self._socket_names.get(request_id)
+
+        if socket_name is None:
+            return
+
+        self._active_sockets.discard(request_id)
+        print(f"IamResponding SignalR closed: {socket_name}.")
 
     def _record_heartbeat(self, event):
         try:
+            socket_name = self._socket_names.get(event["requestId"])
+
+            if socket_name is None:
+                return
+
             payload = event["response"]["payloadData"]
 
             for message in payload.split("\x1e"):
-                if json.loads(message).get("type") == 6:
-                    self._last_heartbeat = time.monotonic()
+                if not message:
+                    continue
+
+                try:
+                    signalr_message = json.loads(message)
+                except (TypeError, ValueError):
+                    continue
+
+                if signalr_message.get("type") == 6:
+                    self._last_heartbeats[socket_name] = (
+                        time.monotonic()
+                    )
+
+                elif (
+                    socket_name == HUB_SIGNALR
+                    and signalr_message.get("type") == 1
+                ):
+                    target = signalr_message.get("target", "unknown")
+                    self._last_hub_update = time.monotonic()
+                    print(
+                        "IamResponding HubSignalR update received: "
+                        f"target={target}."
+                    )
 
         except (KeyError, TypeError, ValueError):
             pass
 
     def _heartbeat_timed_out(self):
         last_heartbeat = (
-            self._last_heartbeat
+            self._last_heartbeats[HUB_SIGNALR]
             or self._heartbeat_monitor_started_at
         )
 
@@ -50,8 +137,7 @@ class IamResponding:
         )
 
     def open(self):
-        self._last_heartbeat = None
-        self._heartbeat_monitor_started_at = time.monotonic()
+        self._reset_signalr_state()
 
         self.page.goto("https://dashboard.iamresponding.com")
 
@@ -96,6 +182,40 @@ class IamResponding:
         self.page.wait_for_load_state("domcontentloaded")
         return True
 
+    def establish_signalr_monitoring(self):
+        """Reload once so this monitor observes and names both hubs."""
+        self._reset_signalr_state()
+        print(
+            "IamResponding refreshing once to establish "
+            "SignalR monitoring."
+        )
+        self.page.reload(wait_until="domcontentloaded")
+
+    @staticmethod
+    def _age_text(timestamp):
+        if timestamp is None:
+            return "not observed"
+
+        return f"{int(time.monotonic() - timestamp)}s"
+
+    def log_signalr_status(self):
+        hub_connected = any(
+            self._socket_names.get(request_id) == HUB_SIGNALR
+            for request_id in self._active_sockets
+        )
+
+        hub_status = "connected" if hub_connected else "not connected"
+        print(
+            "IamResponding SignalR status: "
+            f"HubSignalR heartbeat age="
+            f"{self._age_text(self._last_heartbeats[HUB_SIGNALR])}; "
+            f"Global heartbeat age="
+            f"{self._age_text(self._last_heartbeats[GLOBAL_HUB])}; "
+            f"HubSignalR update age="
+            f"{self._age_text(self._last_hub_update)}; "
+            f"HubSignalR={hub_status}."
+        )
+
     def show(self):
         self.page.bring_to_front()
 
@@ -129,6 +249,8 @@ class IamResponding:
                     f"detected for {HEARTBEAT_TIMEOUT_SECONDS} seconds."
                 )
                 return False
+
+            self.log_signalr_status()
 
         except Exception:
             self._last_failure_reason = "page_validation_failed"
