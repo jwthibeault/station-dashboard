@@ -64,7 +64,7 @@ class IamResponding:
                 "body"
             ).inner_text(timeout=5000).lower()
 
-            if "trying to re-establish internet connection" in text:
+            if "trying to re-establish connection to the server" in text:
                 print(
                     "IamResponding server connection error banner detected."
                 )
