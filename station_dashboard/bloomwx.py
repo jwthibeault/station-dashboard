@@ -1,9 +1,13 @@
+import time
+
+
 class BloomWX:
     URL = "https://bloomwx.com/livedash/at/toano-va?zoom=8"
     LOAD_TIMEOUT = 20000
 
     def __init__(self, page):
         self.page = page
+        self._last_failure_reason = None
 
     def _is_loaded(self):
         if self.page.is_closed():
@@ -118,20 +122,31 @@ class BloomWX:
         self.page.bring_to_front()
 
     def check(self):
+        self._last_failure_reason = None
+
         if not self._is_loaded():
+            self._last_failure_reason = "page_validation_failed"
             return False
 
         if self._has_offline_banner():
+            self._last_failure_reason = "offline_banner"
             print("BloomWX offline banner detected.")
             return False
 
         if self._has_stale_data_banner():
+            self._last_failure_reason = "stale_data_banner"
             print("BloomWX stale data banner detected.")
             return False
 
         if self._has_broken_map_image():
+            self._last_failure_reason = "map_image_validation_failed"
             print("BloomWX map image failed to load.")
             print("Refreshing BloomWX...")
+            reload_started_at = time.monotonic()
+            print(
+                "RELOAD_EVENT dashboard=BloomWX "
+                "trigger=map_image_validation_failed"
+            )
 
             try:
                 self.page.reload(
@@ -141,11 +156,24 @@ class BloomWX:
 
                 self._wait_for_loaded()
                 print("BloomWX loaded successfully after map refresh.")
+                duration = round(time.monotonic() - reload_started_at)
+                print(
+                    "RELOAD_RESULT dashboard=BloomWX status=recovered "
+                    f"duration_seconds={duration}"
+                )
                 return True
 
             except Exception as e:
                 print(f"BloomWX map refresh failed: {e}")
                 print("BloomWX will be retried during its next rotation.")
+                duration = round(time.monotonic() - reload_started_at)
+                print(
+                    "RELOAD_RESULT dashboard=BloomWX status=failed "
+                    f"duration_seconds={duration}"
+                )
                 return False
 
         return True
+
+    def health_failure_reason(self):
+        return self._last_failure_reason

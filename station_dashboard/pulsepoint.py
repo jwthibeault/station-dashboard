@@ -8,6 +8,7 @@ class PulsePoint:
         self.credentials = credentials or {}
         self._rapid_polling_seen = False
         self._last_api_start = None
+        self._last_failure_reason = None
 
     def open(self):
         print("Opening PulsePoint...")
@@ -136,6 +137,7 @@ class PulsePoint:
         self.page.bring_to_front()
 
     def check(self):
+        self._last_failure_reason = None
         #
         # PulsePoint health is based on the incident API actually
         # polling.  A page can remain visually alive while API polling
@@ -196,6 +198,7 @@ class PulsePoint:
             """)
 
             if diagnostics["count"] == 0:
+                self._last_failure_reason = "incident_api_not_observed"
                 print(
                     "PulsePoint API polling: no incident API requests observed."
                 )
@@ -225,6 +228,7 @@ class PulsePoint:
                 )
 
             if age >= 90:
+                self._last_failure_reason = "incident_api_polling_timeout"
                 print(
                     f"PulsePoint API polling STALE: no incident API "
                     f"request for {age:.1f}s; reinitializing PulsePoint."
@@ -232,6 +236,7 @@ class PulsePoint:
                 return False
 
         except Exception as exc:
+            self._last_failure_reason = "incident_api_check_error"
             print(f"PulsePoint API polling check error: {exc}")
             return False
 
@@ -252,12 +257,18 @@ class PulsePoint:
                 title = self.page.title()
 
                 if title != "PulsePoint Central":
+                    self._last_failure_reason = "page_validation_failed"
                     return False
 
                 if self.page.is_closed():
+                    self._last_failure_reason = "page_validation_failed"
                     return False
 
             except Exception:
+                self._last_failure_reason = "page_validation_failed"
                 return False
 
         return True
+
+    def health_failure_reason(self):
+        return self._last_failure_reason

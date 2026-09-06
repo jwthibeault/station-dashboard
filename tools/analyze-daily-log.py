@@ -10,32 +10,50 @@ from collections import defaultdict
 
 COMPONENTS = ["PulsePoint", "BloomWX", "IamResponding", "VDOT"]
 LOCAL_TZ = ZoneInfo("America/New_York")
+RELOAD_REASON_LABELS = {
+    "signalr_heartbeat_timeout": "SignalR heartbeat timeout",
+    "visible_server_connection_error": "Visible server connection error",
+    "incident_api_not_observed": "Incident API polling not observed",
+    "incident_api_polling_timeout": "Incident API polling timeout",
+    "offline_banner": "Offline banner",
+    "stale_data_banner": "Stale data banner",
+    "map_image_validation_failed": "Map image validation failed",
+    "logged_out": "Logged out",
+    "camera_wall_unavailable": "Camera wall unavailable",
+    "page_url_validation_failed": "Page or URL validation failed",
+    "page_validation_failed": "Page validation failed",
+    "network_restored": "Network restored",
+    "health_check_failed": "Health check failed",
+}
 
 
 # ----------------------------------------------------------------------
 # JOURNAL
 # ----------------------------------------------------------------------
 
-def journal_lines():
-    args = ["journalctl"]
-
+def report_period():
     if len(sys.argv) == 6 and sys.argv[1] == "--period":
-        start_arg = datetime.strptime(
+        start = datetime.strptime(
             sys.argv[2] + sys.argv[3],
             "%m%d%y%H%M",
         ).replace(tzinfo=LOCAL_TZ)
-
-        end_arg = datetime.strptime(
+        end = datetime.strptime(
             sys.argv[4] + sys.argv[5],
             "%m%d%y%H%M",
         ).replace(tzinfo=LOCAL_TZ)
+        return start, end
 
-        args += [
-            "--since", start_arg.isoformat(),
-            "--until", end_arg.isoformat(),
-        ]
-    else:
-        args += ["--since", "24 hours ago"]
+    end = datetime.now(LOCAL_TZ)
+    return end - timedelta(hours=24), end
+
+
+def journal_lines(period_start, period_end):
+    args = ["journalctl", "-u", "station-dashboard.service"]
+
+    args += [
+        "--since", period_start.isoformat(),
+        "--until", period_end.isoformat(),
+    ]
 
     args += [
         "-o", "short-iso",
@@ -161,7 +179,8 @@ def classify_network(line):
 # LOAD JOURNAL
 # ----------------------------------------------------------------------
 
-raw_lines = journal_lines()
+period_start, period_end = report_period()
+raw_lines = journal_lines(period_start, period_end)
 
 entries = []
 
@@ -175,15 +194,16 @@ if not entries:
     print("No parseable journal entries found.")
     sys.exit(1)
 
-start = entries[0][0]
-end = entries[-1][0]
+start = period_start
+end = period_end
 
 boots = get_boots()
 
-# Restrict boot count to boots overlapping the 24-hour journal period.
+# Count only boots that started during the reporting period. The active boot
+# may overlap every report window, but it must not be counted repeatedly.
 boots = [
     boot for boot in boots
-    if boot["last"] >= start and boot["first"] <= end
+    if start <= boot["first"] <= end
 ]
 
 
@@ -392,6 +412,40 @@ for ts, line in entries:
                 if incident["recovery"] is None:
                     incident["recovery"] = ts
                     break
+
+
+reload_events = defaultdict(list)
+
+for ts, line in entries:
+    event = re.search(
+        r"RELOAD_EVENT dashboard=(\S+) trigger=(\S+)",
+        line,
+    )
+
+    if event:
+        component, trigger = event.groups()
+        if component in COMPONENTS:
+            reload_events[component].append({
+                "start": ts,
+                "trigger": trigger,
+                "status": None,
+                "duration_seconds": None,
+            })
+        continue
+
+    result = re.search(
+        r"RELOAD_RESULT dashboard=(\S+) status=(\S+) "
+        r"duration_seconds=(\d+)",
+        line,
+    )
+
+    if result:
+        component, status, duration = result.groups()
+        for reload_event in reversed(reload_events[component]):
+            if reload_event["status"] is None:
+                reload_event["status"] = status
+                reload_event["duration_seconds"] = int(duration)
+                break
 
 
 print("COMPONENTS")
@@ -684,8 +738,8 @@ print()
 unresolved_components = [
     c for c in COMPONENTS
     if any(
-        x["recovery"] is None
-        for x in incidents[c]
+        x["status"] != "recovered"
+        for x in reload_events[c]
     )
 ]
 
@@ -822,15 +876,12 @@ print()
 
 if "--email" in sys.argv:
 
-    now = datetime.now(LOCAL_TZ)
-    period_start = now - timedelta(hours=24)
-
     print("STATION DASHBOARD")
     print("Daily Health Report")
     print()
     print(
-        f"{period_start.strftime('%b %-d, %-I:%M %p')} "
-        f"→ {now.strftime('%b %-d, %-I:%M %p')}"
+        f"{start.strftime('%b %-d, %-I:%M %p')} "
+        f"→ {end.strftime('%b %-d, %-I:%M %p')}"
     )
     print()
     print("OVERALL STATUS")
@@ -846,50 +897,44 @@ if "--email" in sys.argv:
 
     for component in COMPONENTS:
 
-        data = incidents[component]
+        data = reload_events[component]
         count = len(data)
 
         recovered = sum(
             1
             for x in data
-            if x["recovery"] is not None
+            if x["status"] == "recovered"
         )
 
         unresolved = count - recovered
-
-        reloads = (
-            page_reloads[component]["health_recovery"]
-            + page_reloads[component]["network_restoration"]
-        )
 
         print()
         print(component)
 
         if unresolved:
-            print(f"⚠️ {unresolved} unresolved")
+            print(f"⚠️ {unresolved} unrecovered reload(s)")
         elif count:
-            print(f"✓ {count} incidents — all recovered")
+            print(f"✓ {count} reload(s) — all recovered")
         else:
-            print("✓ No incidents")
+            print("✓ No reloads")
 
-        if reloads:
-            print(f"↻ {reloads} page reloads")
+        reasons = defaultdict(int)
+        for reload_event in data:
+            reasons[reload_event["trigger"]] += 1
 
-        if count and recovered == count:
-            durations = [
-                int(
-                    (
-                        x["recovery"] - x["start"]
-                    ).total_seconds()
-                )
-                for x in data
-                if x["recovery"] is not None
-            ]
+        for trigger, total in sorted(reasons.items()):
+            label = RELOAD_REASON_LABELS.get(trigger, trigger)
+            print(f"• {label}: {total}")
 
-            if durations:
-                print(
-                    f"Recovery: {min(durations)}–{max(durations)} sec"
-                )
+        durations = [
+            x["duration_seconds"]
+            for x in data
+            if x["status"] == "recovered"
+            and x["duration_seconds"] is not None
+        ]
+
+        if durations:
+            print(f"Recovery: {min(durations)}–{max(durations)} sec")
 
     print()
     print("NETWORK")
@@ -897,6 +942,17 @@ if "--email" in sys.argv:
     if network_failed or network_degraded:
         print(f"⚠️ {network_failed} failures")
         print(f"⚠️ {network_degraded} degradations")
+        for incident in network_incidents:
+            state = "Failure" if "FAILED" in incident["states"] else "Degradation"
+            duration = (
+                str(incident["end"] - incident["start"])
+                if incident["end"] else "still active"
+            )
+            print(
+                f"• {state}: {duration}; gateway max "
+                f"{incident['max_gateway']:.1f}%, external max "
+                f"{incident['max_external']:.1f}%"
+            )
     else:
         print("✓ No network incidents")
 
@@ -904,19 +960,23 @@ if "--email" in sys.argv:
     print("RELIABILITY")
     print(f"Health checks: {routine_health:,}")
     print(f"Network checks: {routine_network:,}")
-    print(f"Polling/recovery: {polling_recovery}")
+    print(f"Page reloads: {sum(len(x) for x in reload_events.values())}")
 
     notable = []
 
     for component in COMPONENTS:
 
-        data = incidents[component]
+        data = reload_events[component]
 
         for x in data:
-            if x["recovery"] is None:
+            if x["status"] != "recovered":
+                label = RELOAD_REASON_LABELS.get(
+                    x["trigger"],
+                    x["trigger"],
+                )
                 notable.append(
-                    f"{component} became unhealthy at "
-                    f"{format_time(x['start'])} and remains unresolved."
+                    f"{component} reload for {label.lower()} at "
+                    f"{format_time(x['start'])} did not recover."
                 )
 
     if dashboard_nonboot_starts:
@@ -939,7 +999,7 @@ if "--email" in sys.argv:
 
     print()
     print(
-        f"Generated: {now.strftime('%b %-d, %-I:%M %p')}"
+        f"Generated: {end.strftime('%b %-d, %-I:%M %p')}"
     )
 
     sys.exit(0)

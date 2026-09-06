@@ -14,6 +14,7 @@ class IamResponding:
         self._last_heartbeat = None
         self._heartbeat_monitor_started_at = time.monotonic()
         self._heartbeat_failure_detected = False
+        self._last_failure_reason = None
 
         self._cdp_session = self.page.context.new_cdp_session(
             self.page
@@ -100,10 +101,12 @@ class IamResponding:
 
     def check(self):
         self._heartbeat_failure_detected = False
+        self._last_failure_reason = None
 
         if not self.page.url.startswith(
             "https://dashboard.iamresponding.com"
         ):
+            self._last_failure_reason = "page_url_validation_failed"
             return False
 
         try:
@@ -112,6 +115,7 @@ class IamResponding:
             ).inner_text(timeout=5000).lower()
 
             if "trying to re-establish connection to the server" in text:
+                self._last_failure_reason = "visible_server_connection_error"
                 print(
                     "IamResponding server connection error banner detected."
                 )
@@ -119,6 +123,7 @@ class IamResponding:
 
             if self._heartbeat_timed_out():
                 self._heartbeat_failure_detected = True
+                self._last_failure_reason = "signalr_heartbeat_timeout"
                 print(
                     "IamResponding HubSignalR heartbeat has not been "
                     f"detected for {HEARTBEAT_TIMEOUT_SECONDS} seconds."
@@ -126,12 +131,16 @@ class IamResponding:
                 return False
 
         except Exception:
+            self._last_failure_reason = "page_validation_failed"
             return False
 
         return True
 
     def heartbeat_failure_detected(self):
         return self._heartbeat_failure_detected
+
+    def health_failure_reason(self):
+        return self._last_failure_reason
 
     def is_emergency(self):
         return self.page.locator(

@@ -596,22 +596,44 @@ def create_dashboard(name, page, credentials):
     )
 
 
+def health_failure_reason(dashboard):
+    reason = dashboard.health_failure_reason()
+    return reason or "health_check_failed"
+
+
+def log_reload_event(name, trigger):
+    print(f"RELOAD_EVENT dashboard={name} trigger={trigger}")
+
+
+def log_reload_result(name, status, started_at):
+    duration = round(time.monotonic() - started_at)
+    print(
+        f"RELOAD_RESULT dashboard={name} status={status} "
+        f"duration_seconds={duration}"
+    )
+
+
 def recover_dashboard(
     name,
     dashboard,
     page,
     health_state,
+    trigger,
 ):
     print(
         f"{name} health check FAILED. "
         "Attempting recovery..."
     )
 
+    reload_started_at = time.monotonic()
+    log_reload_event(name, trigger)
+
     try:
         if not dashboard.open():
             print(
                 f"{name} recovery open() returned False."
             )
+            log_reload_result(name, "failed", reload_started_at)
             return False
 
         print(
@@ -636,6 +658,7 @@ def recover_dashboard(
                 f"{format_health_time(health_state[name]['last_successful_check'])}"
             )
 
+            log_reload_result(name, "recovered", reload_started_at)
             return True
 
         print(
@@ -643,6 +666,7 @@ def recover_dashboard(
             f"{MONITOR_INTERVAL}-second grace period."
         )
 
+        log_reload_result(name, "failed", reload_started_at)
         return False
 
     except Exception as recovery_error:
@@ -650,6 +674,7 @@ def recover_dashboard(
             f"{name} recovery failed: "
             f"{recovery_error}"
         )
+        log_reload_result(name, "failed", reload_started_at)
         return False
 
 
@@ -784,6 +809,12 @@ def monitor_dashboard(
                             )
 
                             try:
+                                reload_started_at = time.monotonic()
+                                log_reload_event(
+                                    name,
+                                    "network_restored",
+                                )
+
                                 if dashboard is not None:
                                     dashboard.open()
 
@@ -811,6 +842,12 @@ def monitor_dashboard(
                                         "Returning to normal monitoring."
                                     )
 
+                                    log_reload_result(
+                                        name,
+                                        "recovered",
+                                        reload_started_at,
+                                    )
+
                                     down = False
                                     consecutive_failures = 0
                                     was_network_down = False
@@ -824,6 +861,12 @@ def monitor_dashboard(
                                         "after network restoration."
                                     )
 
+                                    log_reload_result(
+                                        name,
+                                        "failed",
+                                        reload_started_at,
+                                    )
+
                                     down = True
                                     was_network_down = False
                                     consecutive_failures = 1
@@ -832,6 +875,11 @@ def monitor_dashboard(
                                     )
 
                             except Exception as recovery_error:
+                                log_reload_result(
+                                    name,
+                                    "failed",
+                                    reload_started_at,
+                                )
                                 print(
                                     f"{name} recovery after network "
                                     f"restoration failed: {recovery_error}"
@@ -894,6 +942,7 @@ def monitor_dashboard(
                                     dashboard,
                                     page,
                                     health_state,
+                                    health_failure_reason(dashboard),
                                 )
 
                                 if recovered:
@@ -936,6 +985,7 @@ def monitor_dashboard(
                                     dashboard,
                                     page,
                                     health_state,
+                                    health_failure_reason(dashboard),
                                 )
 
                                 if recovered:
@@ -967,6 +1017,7 @@ def monitor_dashboard(
                                     dashboard,
                                     page,
                                     health_state,
+                                    health_failure_reason(dashboard),
                                 )
 
                                 if recovered:

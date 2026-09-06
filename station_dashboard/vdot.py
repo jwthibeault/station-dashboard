@@ -5,6 +5,7 @@ class VDOT:
     def __init__(self, page: Page, credentials: dict):
         self.page = page
         self.credentials = credentials
+        self._last_failure_reason = None
 
     def open(self):
         self.page.goto("https://secure.vdotcameras.com/auth/login")
@@ -226,14 +227,18 @@ class VDOT:
         the logout popup is visible, or the camera wall is not visible.
         """
 
+        self._last_failure_reason = None
+
         if not self.page.url.startswith(
             "https://secure.vdotcameras.com/operator/wall"
         ):
+            self._last_failure_reason = "page_url_validation_failed"
             return False
 
         if self.page.locator(
             "#logged-out-message"
         ).is_visible():
+            self._last_failure_reason = "logged_out"
             return False
 
         try:
@@ -245,7 +250,14 @@ class VDOT:
                 "div.wall.page"
             )
 
-            return wall.is_visible(timeout=2000)
+            visible = wall.is_visible(timeout=2000)
+            if not visible:
+                self._last_failure_reason = "camera_wall_unavailable"
+            return visible
 
         except Exception:
+            self._last_failure_reason = "camera_wall_unavailable"
             return False
+
+    def health_failure_reason(self):
+        return self._last_failure_reason
